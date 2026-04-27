@@ -114,7 +114,10 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
   }, []);
 
   const toggleRecording = () => {
+    if (isProcessing) return;
+    
     if (isRecordingRef.current) {
+      console.log("Stopping recording manually...");
       isRecordingRef.current = false;
       setIsRecording(false);
       isStartingRef.current = false;

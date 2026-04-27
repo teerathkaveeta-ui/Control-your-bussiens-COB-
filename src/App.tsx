@@ -343,8 +343,9 @@ function MainApp() {
     const processingTimeout = setTimeout(() => {
       setIsProcessing(prev => {
         if (prev) {
-          setAiResponse("Sain! Response thora slow hai. Network check krein ya dobara boliye.");
-          speak("Response slow hai. Dobara boliye.");
+          console.log("Processing timed out");
+          setAiResponse("Sain! COB thora slow hai aadhay kaam k baad. Refresh karein ya dobara boliye.");
+          speak("Response slow hai. Dobara koshish karein.");
           return false;
         }
         return prev;
@@ -356,8 +357,10 @@ function MainApp() {
         throw new Error("GEMINI_API_KEY is missing. Please add it to Settings.");
       }
 
+      console.log("Calling parseBusinessInput...");
       const result = await parseBusinessInput(transcript);
       clearTimeout(processingTimeout);
+      console.log("Result from parser:", result);
       
       if (result.intent === 'record') {
         let fullResponse = "";
@@ -366,18 +369,19 @@ function MainApp() {
 
         // FALLBACK: If Gemini failed to find actions/amounts but it is a record intent
         if (actions.length === 0 || !actions.some((a: any) => a.amount > 0)) {
-           const numMatch = transcript.match(/(\d+)/);
-           if (numMatch) {
-             const amount = parseInt(numMatch[1], 10);
+           console.log("No valid actions found, trying regex fallback");
+           const nums = transcript.match(/(\d+)/g);
+           if (nums) {
+             const amount = parseInt(nums[nums.length - 1], 10);
              let type = 'income';
-             if (transcript.match(/(kharcha|expense|خرچہ)/i)) type = 'expense';
+             if (transcript.match(/(kharcha|expense|خرچہ|kharch)/i)) type = 'expense';
              if (transcript.match(/(udhar|udhari|baqi|ادھار|باقیہ)/i)) type = 'debt';
              if (transcript.match(/(jama|wapsi|mil gaye|جمع|واپسی)/i)) type = 'payment';
              
              actions = [{
                amount,
                type,
-               description: `Manual Voice: ${transcript.length > 20 ? transcript.substring(0, 17) + '...' : transcript}`
+               description: `Direct Record: ${transcript.length > 25 ? transcript.slice(0, 22) + '...' : transcript}`
              }];
            }
         }
@@ -385,11 +389,12 @@ function MainApp() {
         for (const actionData of actions) {
           const parsed = actionData;
           
-          if (!parsed.amount || isNaN(parsed.amount) || parsed.amount === 0) {
-            console.log("Skipping action with invalid amount", parsed);
+          if (!parsed.amount || isNaN(parsed.amount) || parsed.amount <= 0) {
+            console.log("Skipping invalid amount action:", parsed);
             continue;
           }
 
+          console.log("Saving to Firebase:", parsed);
           await addTransaction(user.uid, {
             ...parsed,
             rawInput: transcript,

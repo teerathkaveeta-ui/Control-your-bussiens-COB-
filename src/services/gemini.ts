@@ -18,10 +18,10 @@ export const parseBusinessInput = async (input: string) => {
     - "Aaj itna kharcha hua" -> expense
     - "Itni udhari likh lo" -> debt
     
-    SUPPORTED NUMBER FORMATS:
+    SUPPORTED NUMBER FORMATS (Detect accurately):
     - Digits: 100, 500, 1000
-    - Roman Urdu words: "sau" (100), "pachaas" (50), "hazaar" (1000), "das" (10), "bees" (20)
-    - Urdu words: "سو", "پچاس", "ہزار"
+    - Roman Urdu: "sou" or "sau" (100), "pachas" (50), "hazar" (1000), "das" (10), "bees" (20), "tees" (30), "chalis" (40), "saath" (60), "sattar" (70), "assi" (80), "navve" (90).
+    - Urdu scripts: "سو", "پچاس", "ہزار"
     
     STRICT RULE: If the user says a single number like "100", "₹500", "sau rupee", or "سو روپے", treat it as an RECORDING of "income" with description "Sale".
     
