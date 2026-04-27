@@ -23,6 +23,14 @@ An AI-powered business management app for shopkeepers. Features voice-to-text re
 3. Create a `.env` file based on `.env.example` and add your `GEMINI_API_KEY`.
 4. Run `npm run dev` to start the development server.
 
-## Deployment
+## Android Build
 
-The app is compatible with standard static site hosting (Vercel, Netlify, GitHub Pages) if backend is purely client-side/simulated, or Cloud Run for full-stack deployment.
+This app is configured with Capacitor to run as a native Android app.
+
+### Manual Build
+1. Build the web app: `npm run build`
+2. Sync Capacitor: `npx cap sync android`
+3. Open in Android Studio: `npx cap open android`
+
+### GitHub Actions
+A GitHub Actions workflow is included in `.github/workflows/android.yml`. When you push to the `main` branch, it will automatically build a debug APK and upload it as a workflow artifact.

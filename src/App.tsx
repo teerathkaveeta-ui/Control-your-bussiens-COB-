@@ -251,15 +251,21 @@ function MainApp() {
     setIsProcessing(true);
     
     // Safety timeout to prevent infinite processing state
+    const timeoutDuration = 20000; // Increased to 20 seconds
     const processingTimeout = setTimeout(() => {
-      setIsProcessing(false);
-      setAiResponse("COB thora masrofiyat mein hai. Dobara koshish karein.");
-    }, 10000);
+      if (isProcessing) {
+        setIsProcessing(false);
+        setAiResponse("Network ya server thora slow hai. Dobara koshish karein.");
+        speak("Network thora slow hai. Dobara koshish karein.");
+      }
+    }, timeoutDuration);
 
     try {
       const result = await parseBusinessInput(transcript);
       clearTimeout(processingTimeout);
       
+      if (!isProcessing) return; // Prevent late updates
+
       if (result.intent === 'record') {
         const parsed = result.data;
         await addTransaction(user.uid, {

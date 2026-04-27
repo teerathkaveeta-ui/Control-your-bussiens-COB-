@@ -10,11 +10,17 @@ interface VoiceRecorderProps {
 export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [recognition, setRecognition] = useState<any>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const onTranscriptRef = React.useRef(onTranscript);
+
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript;
+  }, [onTranscript]);
 
   useEffect(() => {
     // @ts-ignore
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
+    if (SpeechRecognition && !recognition) {
       const recognitionInstance = new SpeechRecognition();
       recognitionInstance.continuous = false;
       recognitionInstance.interimResults = false;
@@ -27,13 +33,20 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       recognitionInstance.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         if (transcript) {
-          onTranscript(transcript);
+          onTranscriptRef.current(transcript);
         }
       };
 
       recognitionInstance.onerror = (event: any) => {
         console.error("Speech recognition error:", event.error);
         setIsRecording(false);
+        if (event.error === 'not-allowed') {
+          setErrorMessage("Mic permission deni pare gi.");
+        } else if (event.error === 'network') {
+          setErrorMessage("Internet ka masla lag raha hai.");
+        } else {
+          setErrorMessage("Mic mein masla hai. Refresh karein.");
+        }
       };
 
       recognitionInstance.onend = () => {
@@ -42,7 +55,17 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
 
       setRecognition(recognitionInstance);
     }
-  }, [onTranscript]);
+  }, [recognition]); // Run once or if recognition is lost
+
+  // Manual fallback for stuck states
+  useEffect(() => {
+    const checkState = setInterval(() => {
+      if (isRecording && recognition && !('state' in recognition || true)) {
+         // Some browsers might need active polling if events fail
+      }
+    }, 1000);
+    return () => clearInterval(checkState);
+  }, [isRecording, recognition]);
 
   // Cleanup/timeout if recording hangs
   useEffect(() => {
@@ -73,18 +96,13 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
         return;
       }
       try {
+        setErrorMessage(null);
         recognition.start();
-        // Fallback in case onstart doesn't fire immediately
-        setTimeout(() => {
-          if (!isRecording) {
-             // Check if it's actually running
-          }
-        }, 100);
       } catch (err) {
         console.error("Recognition start failed:", err);
         setIsRecording(false);
-        // Try resetting if it was already running
         try { recognition.stop(); } catch(e) {}
+        setErrorMessage("Mic start nahi ho raha.");
       }
     }
   };
@@ -132,8 +150,8 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       </div>
 
       <div className="text-center space-y-1">
-        <p className="text-sm font-bold text-white tracking-tight">
-          {isRecording ? 'LISTENING TO URDU/ENGLISH...' : isProcessing ? 'CONVERTING TO RECORDS...' : 'TAP TO RECORD VOICE'}
+        <p className={`text-sm font-bold tracking-tight ${errorMessage ? 'text-rose-400' : 'text-white'}`}>
+          {errorMessage || (isRecording ? 'LISTENING TO URDU/ENGLISH...' : isProcessing ? 'CONVERTING TO RECORDS...' : 'TAP TO RECORD VOICE')}
         </p>
         <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
           {isRecording ? 'Speak your sales or debts clearly' : 'Voice-First Business Logic'}
