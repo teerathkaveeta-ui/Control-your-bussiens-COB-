@@ -8,6 +8,8 @@ export const parseBusinessInput = async (input: string) => {
     contents: `You are an AI business partner named COB. 
     Analyze the following input from a shopkeeper. 
     The shopkeeper can either be RECORDING something (income, expense, debt) or ASKING A QUESTION about their business history.
+    
+    STRICT RULE: If the user says a single number like "100", "₹500", or "sau rupee", treat it as an RECORDING of "income" with description "Sale".
 
     Input: "${input}"
 
@@ -19,6 +21,7 @@ export const parseBusinessInput = async (input: string) => {
        - "debt" (Udhaar) is when YOU GIVE items/money to a customer on credit. Phrases: "udhar diya", "khata me likh lo", "Ahmed ko 200 ki cheez di".
        - "income" (Kamai) is general sales.
        - "expense" (Kharcha) is shop expenses (e.g., buying stock, paying electric bill).
+       - EXAMPLE: "₹100" -> { "intent": "record", "data": { "amount": 100, "type": "income", "description": "Sale" } }
        - IMPORTANT: If the user just says a number or "₹100" without context, default to type "income" and description "Sale".
        - IMPORTANT: If the user says they "returned goods" or "received a refund" for an expense (e.g., "5000 ka maal wapis kar diya"), use type "expense" but make the amount NEGATIVE (e.g., amount: -5000).
        - IMPORTANT: If a customer returns a sale (refund), use type "income" but make the amount NEGATIVE.
