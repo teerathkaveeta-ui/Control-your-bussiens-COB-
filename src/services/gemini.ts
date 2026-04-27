@@ -10,15 +10,20 @@ export const parseBusinessInput = async (input: string) => {
     The shopkeeper can either be RECORDING something (income, expense, debt) or ASKING A QUESTION about their business history.
     
     Urdu/Roman Urdu Phrase Mapping:
-    - "Kamai" = income
-    - "Kharcha" = expense
-    - "Udhaar" / "Udhari" / "Baqi" = debt
-    - "Jama" / "Paisa mil gaya" / "Wapsi" = payment
+    - "Kamai" / "Sale" / "کمائی" = income
+    - "Kharcha" / "Expense" / "خرچہ" = expense
+    - "Udhaar" / "Udhari" / "Baqi" / "ادھار" = debt
+    - "Jama" / "Paisa mil gaya" / "Wapsi" / "جمع" = payment
     - "Dukan ki itni kamai" -> income
     - "Aaj itna kharcha hua" -> expense
     - "Itni udhari likh lo" -> debt
     
-    STRICT RULE: If the user says a single number like "100", "₹500", or "sau rupee", treat it as an RECORDING of "income" with description "Sale".
+    SUPPORTED NUMBER FORMATS:
+    - Digits: 100, 500, 1000
+    - Roman Urdu words: "sau" (100), "pachaas" (50), "hazaar" (1000), "das" (10), "bees" (20)
+    - Urdu words: "سو", "پچاس", "ہزار"
+    
+    STRICT RULE: If the user says a single number like "100", "₹500", "sau rupee", or "سو روپے", treat it as an RECORDING of "income" with description "Sale".
     
     STRICT RULE: If the user says something like "Kamai 500", "500 kamai", "Kharcha 200", "200 kharcha", "Udhari 100", "100 udhari", treat these as CLEAR RECORDINGS.
     

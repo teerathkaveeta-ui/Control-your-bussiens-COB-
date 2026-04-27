@@ -122,6 +122,7 @@ function MainApp() {
   const [transcriptQueue, setTranscriptQueue] = useState<string[]>([]);
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualEntry, setManualEntry] = useState({ amount: '', type: 'income', description: '', customerName: '' });
+  const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const lastProcessedTranscript = React.useRef<string | null>(null);
 
   // Effect to process transcript queue
@@ -334,6 +335,7 @@ function MainApp() {
     }
     
     setIsProcessing(true);
+    setLastTranscript(transcript);
     console.log("Processing transcript:", transcript);
     
     // Safety timeout to prevent infinite processing state
@@ -357,11 +359,30 @@ function MainApp() {
       const result = await parseBusinessInput(transcript);
       clearTimeout(processingTimeout);
       
-      if (result.intent === 'record' && result.actions) {
+      if (result.intent === 'record') {
         let fullResponse = "";
         let recordedCount = 0;
+        let actions = result.actions || [];
 
-        for (const actionData of result.actions) {
+        // FALLBACK: If Gemini failed to find actions/amounts but it is a record intent
+        if (actions.length === 0 || !actions.some((a: any) => a.amount > 0)) {
+           const numMatch = transcript.match(/(\d+)/);
+           if (numMatch) {
+             const amount = parseInt(numMatch[1], 10);
+             let type = 'income';
+             if (transcript.match(/(kharcha|expense|خرچہ)/i)) type = 'expense';
+             if (transcript.match(/(udhar|udhari|baqi|ادھار|باقیہ)/i)) type = 'debt';
+             if (transcript.match(/(jama|wapsi|mil gaye|جمع|واپسی)/i)) type = 'payment';
+             
+             actions = [{
+               amount,
+               type,
+               description: `Manual Voice: ${transcript.length > 20 ? transcript.substring(0, 17) + '...' : transcript}`
+             }];
+           }
+        }
+
+        for (const actionData of actions) {
           const parsed = actionData;
           
           if (!parsed.amount || isNaN(parsed.amount) || parsed.amount === 0) {
@@ -411,7 +432,7 @@ function MainApp() {
           setAiResponse(finalMsg);
           speak(finalMsg);
         } else {
-          const failMsg = "Sain! COB ko amount samajh nahi aaya. '100 rupay kamai' aise bole.";
+          const failMsg = `Sain! COB ko "${transcript}" mein amount samajh nahi aaya. '100 rupay kamai' aise bole.`;
           setAiResponse(failMsg);
           speak(failMsg);
         }
@@ -727,6 +748,13 @@ function MainApp() {
                   >
                     Stuck? Cancel Processing
                   </button>
+                </div>
+              )}
+
+              {lastTranscript && (
+                <div className="mt-4 px-4 py-2 bg-white/5 rounded-xl border border-white/10 animate-fade-in max-w-md text-center">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">COB ne suna:</p>
+                  <p className="text-sm text-emerald-400 font-medium italic">"{lastTranscript}"</p>
                 </div>
               )}
 

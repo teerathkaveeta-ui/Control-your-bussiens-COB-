@@ -32,91 +32,86 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       return;
     }
     
-    if (SpeechRecognition && !recognition) {
-      const recognitionInstance = new SpeechRecognition();
-      recognitionInstance.continuous = true;
-      recognitionInstance.interimResults = true;
-      recognitionInstance.lang = 'ur-PK';
+    // Only initialize once
+    if (recognitionRef.current) return;
 
-      recognitionInstance.onstart = () => {
-        isRecordingRef.current = true;
-        setIsRecording(true);
-        isStartingRef.current = false;
-        setErrorMessage(null);
-        console.log("Speech recognition started");
-      };
+    const recognitionInstance = new SpeechRecognition();
+    recognitionInstance.continuous = true;
+    recognitionInstance.interimResults = true;
+    recognitionInstance.lang = 'ur-PK';
 
-      recognitionInstance.onresult = (event: any) => {
-        let final = '';
-        let interim = '';
+    recognitionInstance.onstart = () => {
+      isRecordingRef.current = true;
+      setIsRecording(true);
+      isStartingRef.current = false;
+      setErrorMessage(null);
+      console.log("Speech recognition started");
+    };
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          const transcript = result[0].transcript;
-          if (result.isFinal) {
-            final += transcript + ' ';
-          } else {
-            interim += transcript;
-          }
-        }
-        
-        if (final) {
-          accumulatedRef.current += final;
-          setAccumulatedTranscript(accumulatedRef.current);
-          console.log("Final transcript chunk:", final);
-        }
-        interimRef.current = interim;
-        setInterimTranscript(interim);
-      };
+    recognitionInstance.onresult = (event: any) => {
+      let final = '';
+      let interim = '';
 
-      recognitionInstance.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
-        if (event.error === 'aborted') return; // Ignore intentional stops
-        
-        isStartingRef.current = false;
-        isRecordingRef.current = false;
-        setIsRecording(false);
-        
-        if (event.error === 'no-speech') {
-          setErrorMessage("Kuch sunai nahi diya. Dubara boleiye.");
-        } else if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-          setErrorMessage("Mic permission blocked hai. Browser bar me 'Lock' icon pe click kr k allow karein.");
-        } else if (event.error === 'network') {
-          setErrorMessage("Internet slow hai ya band hai. Check karein.");
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const transcript = result[0].transcript;
+        if (result.isFinal) {
+          final += transcript + ' ';
         } else {
-          setErrorMessage("Mic Masla: " + event.error + ". Browser refresh karein.");
+          interim += transcript;
         }
-      };
+      }
+      
+      if (final) {
+        accumulatedRef.current += final;
+        setAccumulatedTranscript(accumulatedRef.current);
+      }
+      interimRef.current = interim;
+      setInterimTranscript(interim);
+    };
 
-      recognitionInstance.onend = () => {
-        // Only restart if we REALLY intended to keep recording and it ended unexpectedly
-        // However, auto-restart is what causes the "toong" sound loop.
-        // Let's DISALLOW auto-restart for now to fix the loop.
-        if (isRecordingRef.current && !isStartingRef.current) {
-          console.log("Recognition ended while recording was on. Usually silence timeout.");
-          // We will reset the UI state to allow user to record again instead of forcing a loop
-          setIsRecording(false);
-          isRecordingRef.current = false;
-          
-          // Try to process whatever we had
-          const finalFull = (accumulatedRef.current + ' ' + interimRef.current).trim();
-          if (finalFull) {
-            onTranscriptRef.current(finalFull);
-            accumulatedRef.current = '';
-            interimRef.current = '';
-            setAccumulatedTranscript('');
-            setInterimTranscript('');
-          }
-        } else {
-          setIsRecording(false);
-          isStartingRef.current = false;
+    recognitionInstance.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      if (event.error === 'aborted') return;
+      
+      isStartingRef.current = false;
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      
+      if (event.error === 'no-speech') {
+        // Just let it end naturally, don't show scary error immediately
+        console.log("No speech detected");
+      } else if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+        setErrorMessage("Mic permission blocked hai. Allow karein.");
+      } else {
+        setErrorMessage("Mic Masla: " + event.error);
+      }
+    };
+
+    recognitionInstance.onend = () => {
+      console.log("Speech recognition ended naturally.");
+      const wasActuallyRecording = isRecordingRef.current;
+      
+      setIsRecording(false);
+      isRecordingRef.current = false;
+      isStartingRef.current = false;
+
+      // If it ended while we were supposed to be recording, process what we have
+      if (wasActuallyRecording) {
+        const finalFull = (accumulatedRef.current + ' ' + interimRef.current).trim();
+        if (finalFull) {
+          onTranscriptRef.current(finalFull);
         }
-      };
+        accumulatedRef.current = '';
+        interimRef.current = '';
+        setAccumulatedTranscript('');
+        setInterimTranscript('');
+      }
+    };
 
-      recognitionRef.current = recognitionInstance;
-      setRecognition(recognitionInstance);
-    }
-  }, [recognition]);
+    recognitionRef.current = recognitionInstance;
+    setRecognition(recognitionInstance);
+  }, []);
 
   const toggleRecording = () => {
     if (isRecordingRef.current) {
