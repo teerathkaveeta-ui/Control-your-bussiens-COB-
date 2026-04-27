@@ -22,8 +22,8 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition && !recognition) {
       const recognitionInstance = new SpeechRecognition();
-      recognitionInstance.continuous = false;
-      recognitionInstance.interimResults = false;
+      recognitionInstance.continuous = true;
+      recognitionInstance.interimResults = true;
       recognitionInstance.lang = 'ur-PK';
 
       recognitionInstance.onstart = () => {
@@ -31,9 +31,15 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       };
 
       recognitionInstance.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript) {
-          onTranscriptRef.current(transcript);
+        const results = event.results;
+        for (let i = event.resultIndex; i < results.length; i++) {
+          if (results[i].isFinal) {
+            const transcript = results[i][0].transcript;
+            if (transcript) {
+              onTranscriptRef.current(transcript);
+              recognitionInstance.stop(); // Stop after one final bit
+            }
+          }
         }
       };
 

@@ -67,7 +67,7 @@ export const parseBusinessInput = async (input: string) => {
   return JSON.parse(response.text);
 };
 
-export const answerBusinessQuestion = async (question: string, context: string, products: any[] = []) => {
+export const answerBusinessQuestion = async (question: string, context: string, products: any[] = [], coins: number = 0, shopSize: string = 'Small') => {
   const productContext = products.length > 0 
     ? `Available Products and Rates:\n${products.map(p => `- ${p.name}: Rs. ${p.price} (${p.description})`).join('\n')}`
     : "No product rate list available.";
@@ -78,6 +78,19 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     STRRICT RULE: Always respond in Roman Urdu only (e.g., "Ahmed ka udhar 200 rupay hai"). 
     Do NOT use English for the answer except for names/numbers.
     Keep the tone polite and professional.
+
+    Shop Status:
+    - Current Coins: ${coins}
+    - Shop Size: ${shopSize} (Levels: Small -> Medium -> Large -> Palatial)
+
+    Instructions for Game/Shop Actions:
+    1. If the user asks to "Increase shop size" or "Upgrade shop" (Dukan bari karni hai):
+       - If current coins are >= 1000: Reply that it's done and append "UPGRADE_SUCCESS" at the END of your Urdu response.
+       - If current coins are < 1000: Reply that they need more coins (e.g., "Sain, upgrade ke liye 1000 coins chahiye, abhi sirf ${coins} hain.").
+    2. If the user asks to "Watch Ad" or "Get coins" (Ad dekho, coins chahiye):
+       - Reply that the ad is watched and they got 100 coins. Append "AD_WATCHED" at the END of your Urdu response.
+    3. If asked "Do I have enough coins?" (Kya coins kafi hain?):
+       - Tell them their current balance and how much needed for upgrade (1000).
 
     Product/Price Information (Rate List):
     ${productContext}

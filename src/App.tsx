@@ -95,6 +95,9 @@ function MainApp() {
   const [shopOn, setShopOn] = useState(false);
   const [lastSessionStart, setLastSessionStart] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [coins, setCoins] = useState(0);
+  const [shopSize, setShopSize] = useState('Small');
+  const [chatInput, setChatInput] = useState('');
 
   async function loadData(uid: string) {
     try {
@@ -108,6 +111,12 @@ function MainApp() {
       
       const n = localStorage.getItem(`notifications_${uid}`);
       if (n) setNotifications(JSON.parse(n));
+
+      const c = localStorage.getItem(`coins_${uid}`);
+      if (c) setCoins(parseInt(c));
+
+      const s = localStorage.getItem(`shopSize_${uid}`);
+      if (s) setShopSize(s);
     } catch (err) {
       console.error("Failed to load data:", err);
       setTransactions([]);
@@ -124,8 +133,10 @@ function MainApp() {
   useEffect(() => {
     if (user) {
       localStorage.setItem(`notifications_${user.uid}`, JSON.stringify(notifications));
+      localStorage.setItem(`coins_${user.uid}`, coins.toString());
+      localStorage.setItem(`shopSize_${user.uid}`, shopSize);
     }
-  }, [notifications, user]);
+  }, [notifications, coins, shopSize, user]);
 
   const saveProduct = () => {
     if (newProduct.name && newProduct.price) {
@@ -212,6 +223,19 @@ function MainApp() {
     const msg = newState ? "Dukan khul gayi hai." : "Dukan barha di gayi hai.";
     setAiResponse(msg);
     speak(msg);
+  };
+
+  const resetDay = async () => {
+    if (shopOn) {
+      const now = Date.now();
+      localStorage.setItem('lastSessionStart', now.toString());
+      setLastSessionStart(now);
+      const msg = "Theek hai Sain, ajj ka hisab reset kar diya gaya hai. Naye siray se shuru karein.";
+      setAiResponse(msg);
+      speak(msg);
+    } else {
+      speak("Pehle dukan kholiye.");
+    }
   };
 
   const speak = (text: string) => {
@@ -306,8 +330,27 @@ function MainApp() {
           `${t.description}: Rs. ${t.amount} (${t.type})${t.customerName ? ' for ' + t.customerName : ''}`
         ).join('\n');
         
-        const answer = await answerBusinessQuestion(result.question, context, products);
+        const answer = await answerBusinessQuestion(result.question, context, products, coins, shopSize);
         
+        // Check for specific actions in AI response (simulated triggers)
+        if (answer.includes('UPGRADE_SUCCESS')) {
+          setCoins(prev => prev - 1000);
+          const nextSize = shopSize === 'Small' ? 'Medium' : shopSize === 'Medium' ? 'Large' : 'Palatial';
+          setShopSize(nextSize);
+          const cleanAnswer = answer.replace('UPGRADE_SUCCESS', '').trim();
+          setAiResponse(cleanAnswer);
+          speak(cleanAnswer);
+          return;
+        }
+
+        if (answer.includes('AD_WATCHED')) {
+          setCoins(prev => prev + 100);
+          const cleanAnswer = answer.replace('AD_WATCHED', '').trim();
+          setAiResponse(cleanAnswer);
+          speak(cleanAnswer);
+          return;
+        }
+
         // Detect missing product in AI response to create an alert
         if (answer.toLowerCase().includes('rate list mein nahi') || answer.toLowerCase().includes('available nahi')) {
            // Try to extract the item name if possible, or just generate a generic alert
@@ -423,6 +466,8 @@ function MainApp() {
         <NavItem icon={History} label="Ajj ka Hisab" active={view === 'history'} onClick={() => { setView('history'); setIsMobileMenuOpen(false); }} />
         <NavItem icon={Calendar} label="All Days (Haftawar)" active={view === 'alldays'} onClick={() => { setView('alldays'); setIsMobileMenuOpen(false); }} />
         <NavItem icon={Users} label={`Kul Udhaar (Rs. ${totalDebtBalance.toLocaleString()})`} active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={IndianRupee} label={`Coins: ${coins}`} active={false} onClick={() => {}} />
+        <NavItem icon={Store} label={`Size: ${shopSize}`} active={false} onClick={() => {}} />
         <NavItem icon={ShoppingBag} label="Rate List & Stock" active={view === 'whatsapp'} onClick={() => { setView('whatsapp'); setIsMobileMenuOpen(false); }} />
         <NavItem icon={MessageSquare} label="AI WhatsApp Bot" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
       </div>
@@ -483,16 +528,38 @@ function MainApp() {
           <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 glass rounded-xl">
             <Menu className="w-6 h-6" />
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {shopOn && (
+              <button 
+                onClick={resetDay}
+                className="flex items-center gap-1 px-2 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[9px] font-bold uppercase tracking-tighter"
+              >
+                <History className="w-3 h-3" />
+                Reset Day
+              </button>
+            )}
             <Logo />
             <span className="font-bold">COB</span>
           </div>
           <img src={user.photoURL} alt={user.displayName} className="w-8 h-8 rounded-full border border-white/10" />
         </header>
 
-        <section className="mb-12">
-          <h2 className="text-4xl font-bold mb-2 tracking-tight">Kese hain <span className="text-emerald-400">aap</span>?</h2>
-          <p className="text-slate-400 font-light italic">"COB is monitoring your shop's transactions in real-time."</p>
+        <section className="flex justify-between items-start mb-12">
+          <div>
+            <h2 className="text-4xl font-bold mb-2 tracking-tight">Kese hain <span className="text-emerald-400">aap</span>?</h2>
+            <p className="text-slate-400 font-light italic">"COB is monitoring your shop's transactions in real-time."</p>
+          </div>
+          <div className="hidden lg:flex">
+             {shopOn && (
+                <button 
+                  onClick={resetDay}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-emerald-400 transition-all shadow-lg active:scale-95"
+                >
+                  <History className="w-4 h-4" />
+                  Start This Day Again
+                </button>
+             )}
+          </div>
         </section>
 
         {/* Stats Grid */}
@@ -545,12 +612,27 @@ function MainApp() {
           <div className="mt-8 w-full max-w-lg relative group">
             <input 
               type="text" 
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
               placeholder="COB ko batayein..." 
-              className="w-full glass bg-white/5 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-light italic text-sm"
-              onKeyPress={(e) => e.key === 'Enter' && handleTranscript((e.target as HTMLInputElement).value)}
+              className="w-full glass bg-white/5 rounded-2xl py-5 px-6 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-light italic text-base placeholder:text-slate-600 shadow-2xl"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && chatInput.trim()) {
+                  handleTranscript(chatInput);
+                  setChatInput('');
+                }
+              }}
             />
-            <button className="absolute right-3 top-2.5 p-2 bg-emerald-500 rounded-lg shadow-lg shadow-emerald-500/20 active:scale-90 transition-transform">
-              <Send className="w-4 h-4 text-slate-950" />
+            <button 
+              onClick={() => {
+                if (chatInput.trim()) {
+                  handleTranscript(chatInput);
+                  setChatInput('');
+                }
+              }}
+              className="absolute right-3 top-3 p-3 bg-emerald-500 rounded-xl shadow-xl shadow-emerald-500/30 active:scale-90 hover:bg-emerald-400 transition-all group/btn flex items-center justify-center cursor-pointer"
+            >
+              <Send className="w-5 h-5 text-slate-950 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
             </button>
           </div>
 
