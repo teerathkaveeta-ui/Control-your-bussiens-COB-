@@ -15,7 +15,16 @@ export const parseBusinessInput = async (input: string) => {
     1. If the user is recording a transaction:
        - Return a JSON object with: { intent: "record", data: { amount, type, description, customerName } }
        - type must be "income", "expense", "debt", or "payment".
-       - "payment" is when a customer returns money they owed (udhar wapis kiya).
+       - "payment" (Jama) is when a CUSTOMER GIVES YOU money they owed. Phrases: "paisay mil gaye", "udhar wapis kiya", "Ahmed ne 200 diye" (if its from a borrower).
+       - "debt" (Udhaar) is when YOU GIVE items/money to a customer on credit. Phrases: "udhar diya", "khata me likh lo", "Ahmed ko 200 ki cheez di".
+       - "income" (Kamai) is general sales.
+       - "expense" (Kharcha) is shop expenses (e.g., buying stock, paying electric bill).
+       - IMPORTANT: If the user says they "returned goods" or "received a refund" for an expense (e.g., "5000 ka maal wapis kar diya"), use type "expense" but make the amount NEGATIVE (e.g., amount: -5000).
+       - IMPORTANT: If a customer returns a sale (refund), use type "income" but make the amount NEGATIVE.
+       - IMPORTANT: For "debt" or "payment", ALWAYS include the customer's name in the description field like "Item Name (Customer Name)". 
+         Example: "Biscuit (Sahil)" or "Udhar Wapsi (Ahmed)".
+       - IMPORTANT: Only set "amount" if the user EXPLICITLY mentions a number. 
+       - If the user says "clear the debt" or "hisab clear kar do" without a number, return amount: -1.
     2. If the user is asking a question (e.g., "Ahmed ka udhar kitna hai?"):
        - Return a JSON object with: { intent: "query", question: "The summarized question" }
 
@@ -24,8 +33,11 @@ export const parseBusinessInput = async (input: string) => {
     If you hear "wapis diye" or "paisa mil gaya" from a borrower, it's a "payment".
     
     Examples:
-    - "Ahmed ne 200 rupay wapis kiye" -> { "intent": "record", "data": { "amount": 200, "type": "payment", "customerName": "Ahmed", "description": "Udhar wapsi" } }
-    - "Ahmed ko 200 ki cheeni udhar di" -> { "intent": "record", "data": { "amount": 200, "type": "debt", "customerName": "Ahmed", "description": "Sugar (cheeni)" } }
+    - "Ahmed ne 200 rupay wapis kiye" -> { "intent": "record", "data": { "amount": 200, "type": "payment", "customerName": "Ahmed", "description": "Udhar Wapsi (Ahmed)" } }
+    - "Ahmed ne 200 diye" -> { "intent": "record", "data": { "amount": 200, "type": "payment", "customerName": "Ahmed", "description": "Payment (Ahmed)" } }
+    - "Ahmed ne saara udhaar wapis kar diya" -> { "intent": "record", "data": { "amount": -1, "type": "payment", "customerName": "Ahmed", "description": "Settlement (Ahmed)" } }
+    - "Ahmed ko 200 ki cheeni udhar di" -> { "intent": "record", "data": { "amount": 200, "type": "debt", "customerName": "Ahmed", "description": "Sugar (Ahmed)" } }
+    - "Sahil ne 50 ka biscuit liya udhar" -> { "intent": "record", "data": { "amount": 50, "type": "debt", "customerName": "Sahil", "description": "Biscuit (Sahil)" } }
     - "Gheyo ke 500 diye" -> { "intent": "record", "data": { "amount": 500, "type": "expense", "description": "Ghee (Gheyo)" } }
     - "Ajj 500 ki kamai hui" -> { "intent": "record", "data": { "amount": 500, "type": "income", "description": "Daily Kamai" } }
     - "Ahmed ka udhaar kitna hai?" -> { "intent": "query", "question": "Ahmed ka udhaar kitna hai?" }
@@ -39,7 +51,7 @@ export const parseBusinessInput = async (input: string) => {
           data: {
             type: Type.OBJECT,
             properties: {
-              amount: { type: Type.NUMBER },
+              amount: { type: Type.NUMBER, description: "The amount recorded. Use -1 if full clearing of debt is requested without a value." },
               type: { type: Type.STRING, enum: ["income", "expense", "debt", "payment"] },
               description: { type: Type.STRING },
               customerName: { type: Type.STRING, nullable: true }
@@ -55,23 +67,37 @@ export const parseBusinessInput = async (input: string) => {
   return JSON.parse(response.text);
 };
 
-export const answerBusinessQuestion = async (question: string, context: string) => {
+export const answerBusinessQuestion = async (question: string, context: string, products: any[] = []) => {
+  const productContext = products.length > 0 
+    ? `Available Products and Rates:\n${products.map(p => `- ${p.name}: Rs. ${p.price} (${p.description})`).join('\n')}`
+    : "No product rate list available.";
+
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `You are a helpful business assistant named COB for a shopkeeper in Pakistan. 
+    contents: `You are a helpful business assistant named COB (Control Our Business) for a shopkeeper in Pakistan. 
     STRRICT RULE: Always respond in Roman Urdu only (e.g., "Ahmed ka udhar 200 rupay hai"). 
-    Do NOT use English for the answer. 
-    Keep the tone polite and professional (like a business partner).
+    Do NOT use English for the answer except for names/numbers.
+    Keep the tone polite and professional.
 
-    ACCOUNTABILITY RULES:
-    1. If asked about a loan, always mention the "Customer Name" from the records.
-    2. If asked about an expense, mention the "Description".
-    3. If asked why income is "decreasing" or low, look at the "expense" entries and "debt" entries today vs yesterday to explain it.
-    4. Never say "I don't know" if the data is in the history below.
+    Product/Price Information (Rate List):
+    ${productContext}
 
     Context (Transaction History):
     ${context}
     
+    Instructions for Product Requests (WhatsApp Auto-Reply Logic):
+    1. If the user asks about an item (e.g., "Toothpaste hai?", "Chini ka rate?"):
+       - Check if the item exists in the "Rate List" above.
+       - IF FOUND: Mention the price from the list clearly.
+       - IF NOT FOUND: 
+         a) Tell the OWNER (the current user) that this item is missing from the list (e.g., "Sain, ye cheez rate list mein nahi hai, baraye maharbani add kar dein").
+         b) Also provide a message for the WhatsApp customer: "Ye cheez abhi available nahi hai."
+    
+    Other Instructions:
+    2. If asked about balances or history, use "Transaction History".
+    3. If asked about a loan, always mention the "Customer Name" from the records.
+    4. Never say "I don't know" if the data is in the history or list below.
+
     User Question: "${question}"`,
   });
 

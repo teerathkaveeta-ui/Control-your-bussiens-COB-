@@ -6,3 +6,19 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing
+/test-results/
+
+# Production
+/dist
+/build

@@ -32,7 +32,11 @@ import {
   ShoppingBag,
   Store,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  Share2,
+  MoreHorizontal,
+  Edit2,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
@@ -79,28 +83,122 @@ function MainApp() {
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [view, setView] = useState<'dashboard' | 'history' | 'customers' | 'ai' | 'whatsapp'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'history' | 'customers' | 'ai' | 'whatsapp' | 'alldays'>('dashboard');
+  const [activeStatFilter, setActiveStatFilter] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [showHistoryDetail, setShowHistoryDetail] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
   const [showProductForm, setShowProductForm] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', description: '', price: '' });
   const [shopOn, setShopOn] = useState(false);
   const [lastSessionStart, setLastSessionStart] = useState<number | null>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  async function loadData(uid: string) {
+    try {
+      // Limit to 1500 roughly (approx 150 days * 10 transactions/day)
+      const data = await getRecentTransactions(uid, 1500); 
+      setTransactions(Array.isArray(data) ? data : []);
+      
+      // Load products too
+      const p = localStorage.getItem(`products_${uid}`);
+      if (p) setProducts(JSON.parse(p));
+      
+      const n = localStorage.getItem(`notifications_${uid}`);
+      if (n) setNotifications(JSON.parse(n));
+    } catch (err) {
+      console.error("Failed to load data:", err);
+      setTransactions([]);
+    }
+  }
+
+  // Persist products and notifications to localstorage (since getRecentTransactions handles db for now)
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(`products_${user.uid}`, JSON.stringify(products));
+    }
+  }, [products, user]);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user: any) => {
-      setUser(user);
-      if (user) {
-        const shopData = await getShopData();
-        setShopOn(shopData.shopOn);
-        setLastSessionStart(shopData.lastSessionStart);
-        loadData(user.uid);
+    if (user) {
+      localStorage.setItem(`notifications_${user.uid}`, JSON.stringify(notifications));
+    }
+  }, [notifications, user]);
+
+  const saveProduct = () => {
+    if (newProduct.name && newProduct.price) {
+      if (editingProduct) {
+        setProducts(products.map(p => p.id === editingProduct.id ? { ...newProduct, id: p.id } : p));
+        setEditingProduct(null);
+      } else {
+        setProducts([{ ...newProduct, id: Date.now() }, ...products]);
       }
-      setLoading(false);
+      setNewProduct({ name: '', description: '', price: '' });
+      setShowProductForm(false);
+    }
+  };
+
+  const startEdit = (product: any) => {
+    setEditingProduct(product);
+    setNewProduct({ name: product.name, description: product.description, price: product.price });
+    setShowProductForm(true);
+  };
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (u: any) => {
+      try {
+        setUser(u);
+        if (u) {
+          const shopData = await getShopData();
+          setShopOn(shopData.shopOn);
+          setLastSessionStart(shopData.lastSessionStart);
+          await loadData(u.uid);
+        }
+      } catch (err) {
+        console.error("Auth initialization error:", err);
+      } finally {
+        setLoading(false);
+      }
     });
     return unsubscribe;
   }, []);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
+    </div>
+  );
+
+  if (!user) return (
+    <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-6 text-center overflow-hidden relative">
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[120px]"></div>
+      
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="z-10 flex flex-col items-center"
+      >
+        <div className="mb-8 p-6 glass rounded-[2.5rem] shadow-2xl relative group">
+          <Logo />
+          <div className="absolute inset-0 bg-emerald-500/10 rounded-[2.5rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        </div>
+        <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Control Your Business <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">(COB)</span></h1>
+        <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light">
+          Boliye, COB yaad rakhe ga. Your AI business partner for the modern shop.
+        </p>
+        <button 
+          onClick={loginWithGoogle}
+          className="flex items-center gap-3 bg-white text-slate-950 px-10 py-5 rounded-[2rem] font-bold text-lg hover:bg-emerald-50 transition-all shadow-2xl shadow-white/10 active:scale-95"
+        >
+          <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6" />
+          Get Started with Google
+        </button>
+      </motion.div>
+    </div>
+  );
 
   const toggleShop = async () => {
     const newState = !shopOn;
@@ -114,11 +212,6 @@ function MainApp() {
     const msg = newState ? "Dukan khul gayi hai." : "Dukan barha di gayi hai.";
     setAiResponse(msg);
     speak(msg);
-  };
-
-  const loadData = async (uid: string) => {
-    const data = await getRecentTransactions(uid);
-    setTransactions(data);
   };
 
   const speak = (text: string) => {
@@ -156,9 +249,16 @@ function MainApp() {
   const handleTranscript = async (transcript: string) => {
     if (!user) return;
     setIsProcessing(true);
+    
+    // Safety timeout to prevent infinite processing state
+    const processingTimeout = setTimeout(() => {
+      setIsProcessing(false);
+      setAiResponse("COB thora masrofiyat mein hai. Dobara koshish karein.");
+    }, 10000);
+
     try {
-      setIsProcessing(true);
       const result = await parseBusinessInput(transcript);
+      clearTimeout(processingTimeout);
       
       if (result.intent === 'record') {
         const parsed = result.data;
@@ -168,14 +268,29 @@ function MainApp() {
         });
 
         if ((parsed.type === 'debt' || parsed.type === 'payment') && parsed.customerName) {
-          // If payment, amount is negative in terms of debt balance
-          const debtChange = parsed.type === 'payment' ? -parsed.amount : parsed.amount;
+          let actualAmount = parsed.amount;
+          
+          // Full settlement case (amount: -1)
+          if (actualAmount === -1) {
+            // Calculate current balance for this customer
+            const balance = transactions.reduce((acc, currentT) => {
+              if (currentT.customerName === parsed.customerName) {
+                if (currentT.type === 'debt') return acc + (currentT.amount || 0);
+                if (currentT.type === 'payment') return acc - (currentT.amount || 0);
+              }
+              return acc;
+            }, 0);
+            actualAmount = balance;
+            parsed.amount = balance; // Update for record
+          }
+
+          const debtChange = parsed.type === 'payment' ? -actualAmount : actualAmount;
           await updateCustomerDebt(user.uid, parsed.customerName, debtChange);
         }
 
         await loadData(user.uid);
         const responseText = parsed.type === 'payment' 
-          ? `COB ne Rs. ${parsed.amount} ki wapsi record kar li hai. Ahmed ka hisab kat gaya hai.`
+          ? `COB ne Rs. ${parsed.amount} ki wapsi record kar li hai.`
           : `COB ne Rs. ${parsed.amount} record kar liya hai. Description: ${parsed.description}.`;
         setAiResponse(responseText);
         speak(responseText);
@@ -185,7 +300,25 @@ function MainApp() {
           `${t.description}: Rs. ${t.amount} (${t.type})${t.customerName ? ' for ' + t.customerName : ''}`
         ).join('\n');
         
-        const answer = await answerBusinessQuestion(result.question, context);
+        const answer = await answerBusinessQuestion(result.question, context, products);
+        
+        // Detect missing product in AI response to create an alert
+        if (answer.toLowerCase().includes('rate list mein nahi') || answer.toLowerCase().includes('available nahi')) {
+           // Try to extract the item name if possible, or just generate a generic alert
+           const match = transcript.match(/(hai|rate|price|btayen) (.*)/i);
+           const itemName = match ? match[2] : "Unknown Item";
+           
+           if (!notifications.some(n => n.item === itemName)) {
+             setNotifications([{
+               id: Date.now(),
+               item: itemName,
+               message: `AI ko "${itemName}" nahi mila. Rate list mein add karein?`,
+               timestamp: new Date().toISOString(),
+               rawTranscript: transcript
+             }, ...notifications]);
+           }
+        }
+
         setAiResponse(answer);
         speak(answer);
       }
@@ -199,42 +332,7 @@ function MainApp() {
     }
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
-    </div>
-  );
-
-  if (!user) return (
-    <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-6 text-center overflow-hidden relative">
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[120px]"></div>
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="z-10 flex flex-col items-center"
-      >
-        <div className="mb-8 p-6 glass rounded-[2.5rem] shadow-2xl relative group">
-          <Logo />
-          <div className="absolute inset-0 bg-emerald-500/10 rounded-[2.5rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-        </div>
-        <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Control Your Business <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">(COB)</span></h1>
-        <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light">
-          Boliye, COB yaad rakhe ga. Your AI business partner for the modern shop.
-        </p>
-        <button
-          onClick={loginWithGoogle}
-          className="flex items-center gap-4 bg-white text-slate-950 px-10 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all font-bold group"
-        >
-          <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 group-hover:rotate-12 transition-transform" />
-          Get Started with COB
-        </button>
-      </motion.div>
-    </div>
-  );
-
-    // Group transactions by day for History Detail
+  // Group transactions by day for History Detail
   const groupTransactionsByDay = () => {
     try {
       const groups: { [key: string]: any[] } = {};
@@ -250,13 +348,23 @@ function MainApp() {
         groups[dateStr].push(t);
       });
       
-      // Sort dates and map to "Day 1", "Day 2" etc.
+      // Sort dates
       const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-      return sortedDates.map((date, index) => ({
-        label: `Day ${sortedDates.length - index}`,
-        date: format(new Date(date), 'PPP'),
-        items: groups[date]
-      }));
+      
+      // We want to calculate "Day 1" as the first ever recorded transaction day
+      // But for display consistency, we'll label according to chronological order from start
+      // To get accurate "Day X", we need all dates sorted asc
+      const chronologicalDates = [...sortedDates].reverse();
+      
+      return sortedDates.map((date) => {
+        const dayNumber = chronologicalDates.indexOf(date) + 1;
+        return {
+          id: date,
+          label: `Day ${dayNumber}`,
+          date: format(new Date(date), 'PPP'),
+          items: groups[date]
+        };
+      });
     } catch (e) {
       console.error("History grouping error:", e);
       return [];
@@ -280,8 +388,11 @@ function MainApp() {
     .reduce((acc, t) => acc + (t.amount || 0), 0);
     
   const totalDailyDebt = dailyTransactions
-    .filter(t => t.type === 'debt')
-    .reduce((acc, t) => acc + (t.amount || 0), 0);
+    .reduce((acc, t) => {
+      if (t.type === 'debt') return acc + (t.amount || 0);
+      if (t.type === 'payment') return acc - (t.amount || 0);
+      return acc;
+    }, 0);
 
   // Total debt balance is net outstanding (All time)
   const totalDebtBalance = transactions.reduce((acc, t) => {
@@ -290,49 +401,87 @@ function MainApp() {
     return acc;
   }, 0);
 
+  // Sidebar Content Component to reuse
+  const SidebarContent = () => (
+    <>
+      <div className="flex items-center gap-3 mb-12">
+        <Logo />
+        <div className="flex flex-col">
+          <span className="font-bold text-xl tracking-tight leading-none">COB</span>
+          <span className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase mt-1">AI Assistant</span>
+        </div>
+      </div>
+      
+      <div className="flex flex-col gap-2 flex-grow overflow-x-auto lg:overflow-visible no-scrollbar pb-4 lg:pb-0">
+        <NavItem icon={BarChart3} label="Dashboard" active={view === 'dashboard'} onClick={() => { setView('dashboard'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={History} label="Ajj ka Hisab" active={view === 'history'} onClick={() => { setView('history'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={Calendar} label="All Days (Haftawar)" active={view === 'alldays'} onClick={() => { setView('alldays'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={Users} label={`Kul Udhaar (Rs. ${totalDebtBalance.toLocaleString()})`} active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={ShoppingBag} label="Rate List & Stock" active={view === 'whatsapp'} onClick={() => { setView('whatsapp'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={MessageSquare} label="AI WhatsApp Bot" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
+      </div>
+
+      <div className="pt-6 border-t border-white/5">
+        <div className="flex items-center gap-3 mb-4 p-2 glass rounded-2xl">
+          <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full border border-white/10 shadow-lg" />
+          <div className="overflow-hidden">
+            <p className="text-sm font-bold truncate">{user.displayName}</p>
+            <p className="text-[10px] text-slate-500 truncate font-mono uppercase">Shop Owner</p>
+          </div>
+        </div>
+        <button onClick={() => auth.signOut()} className="flex items-center gap-2 text-rose-400 text-xs font-bold hover:bg-rose-500/10 w-full p-3 rounded-xl transition-colors tracking-widest uppercase">
+          <LogOut className="w-3.5 h-3.5" /> Sign Out
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans relative overflow-hidden flex flex-col lg:flex-row">
       {/* Background Mesh Gradients */}
       <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-      {/* Sidebar */}
-      <nav className="w-full lg:w-72 glass lg:border-r border-white/5 p-6 flex flex-col z-50 lg:h-screen lg:fixed">
-        <div className="flex items-center gap-3 mb-12">
-          <Logo />
-          <div className="flex flex-col">
-            <span className="font-bold text-xl tracking-tight leading-none">COB</span>
-            <span className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase mt-1">AI Assistant</span>
-          </div>
-        </div>
-        
-        <div className="flex lg:flex-col gap-2 flex-grow overflow-x-auto lg:overflow-visible no-scrollbar pb-4 lg:pb-0">
-          <NavItem icon={BarChart3} label="Ajj ki Kamai" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
-          <NavItem icon={History} label="Hisab Kitab" active={view === 'history'} onClick={() => setView('history')} />
-          <NavItem icon={Users} label="Lenden / Udhaari" active={view === 'customers'} onClick={() => setView('customers')} />
-          <NavItem icon={ShoppingBag} label="Products (Prices)" active={view === 'whatsapp'} onClick={() => setView('whatsapp')} />
-          <NavItem icon={MessageSquare} label="COB WhatsApp" active={view === 'ai'} onClick={() => setView('ai')} />
-        </div>
-
-        <div className="hidden lg:block pt-6 border-t border-white/5">
-          <div className="flex items-center gap-3 mb-4 p-2 glass rounded-2xl">
-            <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full border border-white/10 shadow-lg" />
-            <div className="overflow-hidden">
-              <p className="text-sm font-bold truncate">{user.displayName}</p>
-              <p className="text-[10px] text-slate-500 truncate font-mono uppercase">Shop Owner</p>
-            </div>
-          </div>
-          <button onClick={() => auth.signOut()} className="flex items-center gap-2 text-rose-400 text-xs font-bold hover:bg-rose-500/10 w-full p-3 rounded-xl transition-colors tracking-widest uppercase">
-            <LogOut className="w-3.5 h-3.5" /> Sign Out
-          </button>
-        </div>
+      {/* Sidebar - Desktop */}
+      <nav className="hidden lg:flex w-72 glass border-r border-white/5 p-6 flex-col z-50 h-screen fixed">
+        <SidebarContent />
       </nav>
+
+      {/* Mobile Menu Drawer */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] lg:hidden"
+            />
+            <motion.nav 
+              initial={{ x: -300 }}
+              animate={{ x: 0 }}
+              exit={{ x: -300 }}
+              className="fixed inset-y-0 left-0 w-72 glass border-r border-white/10 p-6 flex flex-col z-[101] lg:hidden shadow-2xl"
+            >
+              <SidebarContent />
+            </motion.nav>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       <main className="flex-1 lg:ml-72 p-4 lg:p-10 relative z-10 max-w-7xl mx-auto w-full pb-24 lg:pb-10">
-        {/* Mobile secondary info - simplified */}
-        <header className="flex justify-end items-center mb-6 lg:hidden">
-          <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full border border-white/10" />
+        {/* Header - Mobile Only */}
+        <header className="flex justify-between items-center mb-6 lg:hidden">
+          <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 glass rounded-xl">
+            <Menu className="w-6 h-6" />
+          </button>
+          <div className="flex items-center gap-2">
+            <Logo />
+            <span className="font-bold">COB</span>
+          </div>
+          <img src={user.photoURL} alt={user.displayName} className="w-8 h-8 rounded-full border border-white/10" />
         </header>
 
         <section className="mb-12">
@@ -341,11 +490,31 @@ function MainApp() {
         </section>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-          <StatCard label="Ajj ki Kamai" value={totalIncome} type="up" icon={TrendingUp} onClick={() => setView('history')} />
-          <StatCard label="Ajj ke Kharchay" value={totalExpense} type="down" icon={Wallet} onClick={() => setView('history')} />
-          <StatCard label="Ajj ka Udhaar" value={totalDailyDebt} type="debt" icon={CreditCard} onClick={() => setView('customers')} />
-          <StatCard label="Udhaar (Ardē)" value={totalDebtBalance} type="all" icon={Smartphone} onClick={() => setView('customers')} />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+          <StatCard 
+            label="Ajj ki Kamai (Jama)" 
+            value={totalIncome} 
+            type="up" 
+            icon={TrendingUp} 
+            active={activeStatFilter === 'income'}
+            onClick={() => setActiveStatFilter(activeStatFilter === 'income' ? null : 'income')} 
+          />
+          <StatCard 
+            label="Ajj ke Kharchay" 
+            value={totalExpense} 
+            type="down" 
+            icon={Wallet} 
+            active={activeStatFilter === 'expense'}
+            onClick={() => setActiveStatFilter(activeStatFilter === 'expense' ? null : 'expense')} 
+          />
+          <StatCard 
+            label="Ajj ka Naya Udhaar" 
+            value={totalDailyDebt} 
+            type="debt" 
+            icon={CreditCard} 
+            active={activeStatFilter === 'debt'}
+            onClick={() => setActiveStatFilter(activeStatFilter === 'debt' ? null : 'debt')} 
+          />
         </div>
 
         {/* Start/End Shop Button */}
@@ -401,34 +570,23 @@ function MainApp() {
         <div className="glass rounded-[2rem] overflow-hidden">
           <div className="p-8 border-b border-white/5 flex items-center justify-between group">
             <div className="flex items-center gap-4">
-              <button 
-                onClick={() => document.querySelector('nav')?.classList.toggle('-translate-x-full')}
-                className="lg:hidden p-2 hover:bg-white/10 rounded-xl"
-              >
-                <Menu className="w-6 h-6" />
-              </button>
               <div className="flex flex-col">
                 <h3 className="font-bold text-xl uppercase tracking-tight">
-                  {view === 'dashboard' && 'Ajj ke Kaam'}
-                  {view === 'history' && 'Purani History'}
+                  {activeStatFilter === 'income' && "Ajj ki Kamai (Jama)"}
+                  {activeStatFilter === 'expense' && "Ajj ke Kharchay"}
+                  {activeStatFilter === 'debt' && "Naya Udhaar (Baqi)"}
+                  {activeStatFilter === 'all_debt' && "Kul Udhaar Details"}
+                  {!activeStatFilter && view === 'dashboard' && 'Ajj ke Kaam'}
+                  {view === 'history' && 'Ajj ka Hisab'}
+                  {view === 'alldays' && 'Purani History (All Days)'}
                   {view === 'customers' && 'Pending Hisab'}
                   {view === 'ai' && 'COB WhatsApp Sync'}
                   {view === 'whatsapp' && 'Product List'}
                 </h3>
-                <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-1">Database Sync: Online</p>
+                <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-1">
+                  {activeStatFilter ? 'Specific Records' : 'Database Sync: Online'}
+                </p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {(view === 'dashboard' || view === 'history') && (
-                <button 
-                  onClick={() => setShowHistoryDetail(true)}
-                  className="p-2 hover:bg-white/10 rounded-xl transition-all"
-                  title="Full History"
-                >
-                  <MoreVertical className="w-5 h-5 text-slate-400" />
-                </button>
-              )}
-              {view === 'history' && <button className="p-2 glass rounded-lg text-xs font-bold hover:bg-white/10 transition-colors uppercase tracking-widest">Filter</button>}
             </div>
           </div>
           
@@ -444,9 +602,29 @@ function MainApp() {
 
             {(view === 'dashboard' || view === 'history') && (
               <div className="space-y-2">
-                {(view === 'dashboard' ? dailyTransactions : transactions).map((t) => (
-                  <TransactionRow key={t.id} t={t} />
+                {(view === 'dashboard' ? (
+                  activeStatFilter === 'income' ? dailyTransactions.filter(t => t.type === 'income' || t.type === 'payment') :
+                  activeStatFilter === 'expense' ? dailyTransactions.filter(t => t.type === 'expense') :
+                  activeStatFilter === 'debt' ? dailyTransactions.filter(t => t.type === 'debt' || t.type === 'payment') :
+                  activeStatFilter === 'all_debt' ? transactions.filter(t => t.type === 'debt' || t.type === 'payment') :
+                  dailyTransactions
+                ) : transactions).map((t) => (
+                  <TransactionRow key={t.id} t={t} context={activeStatFilter || (view === 'dashboard' && activeStatFilter === null ? 'dashboard' : null)} />
                 ))}
+              </div>
+            )}
+
+            {view === 'alldays' && (
+              <div className="p-4 space-y-4">
+                {dayWiseHistory.map((day, idx) => (
+                  <DayCard key={day.id || idx} day={day} />
+                ))}
+                {dayWiseHistory.length === 0 && (
+                  <div className="py-24 text-center">
+                    <Calendar className="w-12 h-12 text-slate-800 mx-auto mb-4" />
+                    <p className="text-slate-500 italic">"Abhi tak koi purani history nahi mili."</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -460,22 +638,27 @@ function MainApp() {
                   }
                   return acc;
                 }, {})).filter((c: any) => c.total > 0).map((customer: any, idx) => (
-                  <div key={idx} className="glass p-5 rounded-2xl flex justify-between items-center group hover:bg-white/10 transition-all cursor-pointer">
+                  <div key={idx} className="glass p-5 rounded-2xl flex justify-between items-center group hover:bg-white/10 transition-all cursor-pointer border border-white/5">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 glass rounded-xl flex items-center justify-center">
+                      <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center">
                         <Users className="w-6 h-6 text-emerald-400" />
                       </div>
                       <div>
                         <p className="font-bold text-lg">{customer.name}</p>
-                        <p className="text-xs text-rose-400 font-mono italic">Kul Baqi: Rs. {customer.total.toLocaleString()}</p>
+                        <p className="text-xs text-rose-400 font-mono italic">Hisab Baqi: Rs. {customer.total.toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                       <button className="p-2 glass rounded-lg opacity-0 group-hover:opacity-100 transition-opacity active:scale-95 text-emerald-400" title="Payment Record">
-                        <Plus className="w-4 h-4" />
-                      </button>
-                      <button className="p-2 glass rounded-lg opacity-0 group-hover:opacity-100 transition-opacity active:scale-95 text-blue-400">
-                        <Smartphone className="w-4 h-4" />
+                       <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const text = `Assalamu Alaikum ${customer.name}, aapka is waqt ka COB Udhaar balance Rs. ${customer.total} hai. Shukriya.`;
+                          window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+                        }}
+                        className="p-3 glass rounded-xl text-emerald-400 hover:bg-emerald-500 hover:text-slate-950 transition-all active:scale-95 flex items-center gap-2"
+                       >
+                        <Share2 className="w-4 h-4" />
+                        <span className="text-[10px] font-bold font-mono">Bill Send</span>
                       </button>
                     </div>
                   </div>
@@ -514,6 +697,49 @@ function MainApp() {
                     Link WhatsApp Number
                   </button>
                 </div>
+
+                {/* Bot Alerts Section */}
+                {notifications.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-rose-400" />
+                        Bot Alerts (Missing Items)
+                      </h4>
+                      <button 
+                        onClick={() => setNotifications([])}
+                        className="text-[10px] uppercase font-bold text-slate-500 hover:text-rose-400 underline"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                      {notifications.map((n) => (
+                        <div key={n.id} className="glass p-5 rounded-2xl border-rose-500/20 bg-rose-500/5 flex justify-between items-center group shadow-lg">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-rose-400 shadow-inner">
+                              <ShoppingBag className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-slate-200">{n.message}</p>
+                              <p className="text-[10px] text-slate-500 font-mono mt-1">{format(new Date(n.timestamp), 'p')} · {n.item}</p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              setView('whatsapp');
+                              setNewProduct({ name: n.item, description: '', price: '' });
+                              setShowProductForm(true);
+                            }}
+                            className="px-6 py-3 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold opacity-0 group-hover:opacity-100 transition-all shadow-xl hover:scale-105 active:scale-95"
+                          >
+                            Add Rate List
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -521,32 +747,37 @@ function MainApp() {
               <div className="p-8 space-y-6">
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <h4 className="text-lg font-bold">Manage Products</h4>
-                    <p className="text-xs text-slate-500">Add products for AI to reply on WhatsApp</p>
+                    <h4 className="text-lg font-bold">Product Inventory (Rate List)</h4>
+                    <p className="text-xs text-slate-500">Add prices here so AI can answer customers on WhatsApp</p>
                   </div>
                   <button 
-                    onClick={() => setShowProductForm(!showProductForm)}
-                    className="p-3 bg-emerald-500 text-slate-950 rounded-xl font-bold flex items-center gap-2 text-sm hover:scale-105 transition-all"
+                    onClick={() => {
+                      setEditingProduct(null);
+                      setNewProduct({ name: '', description: '', price: '' });
+                      setShowProductForm(!showProductForm);
+                    }}
+                    className="p-3 bg-emerald-500 text-slate-950 rounded-xl font-bold flex items-center gap-2 text-sm hover:scale-105 transition-all shadow-lg"
                   >
-                    <Plus className="w-4 h-4" /> Add Product
+                    <Plus className="w-4 h-4" /> {showProductForm ? 'Cancel' : 'Add New Item'}
                   </button>
                 </div>
 
                 {showProductForm && (
-                  <div className="glass p-6 rounded-2xl space-y-4 border-emerald-500/20 bg-emerald-500/5">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="glass p-6 rounded-2xl space-y-4 border-emerald-500/20 bg-emerald-500/10 shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-2xl rounded-full"></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
                       <div className="space-y-1">
                         <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Product Name</label>
                         <input 
                           type="text" 
-                          placeholder="e.g. Sugar, Oil" 
+                          placeholder="e.g. Sugar / Chini" 
                           className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
                           value={newProduct.name}
                           onChange={e => setNewProduct({...newProduct, name: e.target.value})}
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Price (Rs)</label>
+                        <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Price (Rs.)</label>
                         <input 
                           type="number" 
                           placeholder="0.00" 
@@ -555,62 +786,77 @@ function MainApp() {
                           onChange={e => setNewProduct({...newProduct, price: e.target.value})}
                         />
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Description</label>
-                        <input 
-                          type="text" 
-                          placeholder="Optional details" 
-                          className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Details / Info</label>
+                        <textarea 
+                          placeholder="Rate per kg, or special discounts etc." 
+                          className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10 h-24 resize-none"
                           value={newProduct.description}
                           onChange={e => setNewProduct({...newProduct, description: e.target.value})}
                         />
                       </div>
                     </div>
                     <div className="flex justify-end gap-3">
-                      <button onClick={() => setShowProductForm(false)} className="px-5 py-2 text-xs font-bold text-slate-400">Cancel</button>
                       <button 
                         onClick={() => {
-                          if (newProduct.name && newProduct.price) {
-                            setProducts([...products, { ...newProduct, id: Date.now() }]);
-                            setNewProduct({ name: '', description: '', price: '' });
-                            setShowProductForm(false);
-                          }
-                        }}
-                        className="px-6 py-2 bg-emerald-500 text-slate-950 rounded-lg text-xs font-bold"
+                          setShowProductForm(false);
+                          setEditingProduct(null);
+                        }} 
+                        className="px-5 py-2 text-xs font-bold text-slate-400"
                       >
-                        Save Product
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={saveProduct}
+                        className="px-8 py-2 bg-emerald-500 text-slate-950 rounded-lg text-sm font-bold shadow-lg active:scale-95"
+                      >
+                        {editingProduct ? 'Update Price' : 'Add to List'}
                       </button>
                     </div>
                   </div>
                 )}
 
                 <div className="space-y-3">
+                  <div className="grid grid-cols-12 gap-4 px-4 text-[10px] uppercase font-bold text-slate-600 font-mono tracking-widest">
+                    <div className="col-span-8">Product / Description</div>
+                    <div className="col-span-4 text-right">Price (PKR)</div>
+                  </div>
                   {products.map(p => (
-                    <div key={p.id} className="glass p-4 rounded-xl flex justify-between items-center group hover:bg-white/5 transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-white/5 rounded-lg flex items-center justify-center">
-                          <ShoppingBag className="w-5 h-5 text-emerald-400" />
+                    <div key={p.id} className="glass p-5 rounded-2xl flex flex-col gap-2 group hover:bg-white/5 transition-all border-white/5">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                            <ShoppingBag className="w-5 h-5 text-emerald-400" />
+                          </div>
+                          <p className="font-bold text-lg">{p.name}</p>
                         </div>
-                        <div>
-                          <p className="font-bold">{p.name}</p>
-                          <p className="text-xs text-slate-500">{p.description || 'No description'}</p>
+                        <div className="flex items-center gap-4">
+                          <p className="font-mono font-bold text-emerald-400 text-xl tracking-tighter">Rs. {p.price}</p>
+                          <button 
+                            onClick={() => startEdit(p)}
+                            className="p-2 opacity-0 group-hover:opacity-100 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
+                            title="Edit Price"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => setProducts(products.filter(item => item.id !== p.id))}
+                            className="p-2 opacity-0 group-hover:opacity-100 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
+                            title="Delete"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-6">
-                        <p className="font-mono font-bold text-emerald-400 text-lg">Rs. {p.price}</p>
-                        <button 
-                          onClick={() => setProducts(products.filter(item => item.id !== p.id))}
-                          className="p-2 opacity-0 group-hover:opacity-100 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                      <div className="pl-14">
+                        <p className="text-sm text-slate-400 leading-relaxed italic">{p.description || 'No detailed description added.'}</p>
                       </div>
                     </div>
                   ))}
                   {products.length === 0 && !showProductForm && (
-                   <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-3xl">
+                   <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2rem]">
                       <ShoppingBag className="w-12 h-12 text-slate-800 mx-auto mb-4" />
-                      <p className="text-slate-500 italic">"Koi product nahi mila. Aap yahan product list bana saktay hain."</p>
+                      <p className="text-slate-500 italic">"Koi product nahi mila. Aap yahan product list bana saktay hain taki COB WhatsApp par jawab de sakay."</p>
                     </div>
                   )}
                 </div>
@@ -663,25 +909,9 @@ function MainApp() {
                       <span className="text-slate-400 text-sm italic">{day.date}</span>
                     </div>
                     
-                    <div className="space-y-3 pl-4 border-l border-white/10">
+                    <div className="space-y-2 pl-4 border-l border-white/10">
                       {day.items.map((t, tIdx) => (
-                        <div key={tIdx} className="flex justify-between items-center py-1">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${
-                              t.type === 'income' || t.type === 'payment' ? 'bg-emerald-500' : 
-                              t.type === 'expense' ? 'bg-rose-500' : 'bg-blue-500'
-                            }`} />
-                            <span className="text-sm font-medium">{t.description}</span>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className={`text-sm font-mono font-bold ${
-                              t.type === 'income' || t.type === 'payment' ? 'text-emerald-400' : 
-                              t.type === 'expense' || t.type === 'debt' ? 'text-rose-400' : 'text-blue-400'
-                            }`}>
-                              {t.type === 'expense' || t.type === 'debt' ? '-' : '+'}Rs. {t.amount}
-                            </span>
-                          </div>
-                        </div>
+                        <TransactionRow key={tIdx} t={t} context="history" />
                       ))}
                     </div>
                   </div>
@@ -714,45 +944,149 @@ function MainApp() {
   );
 }
 
-function TransactionRow({ t }: any) {
+function TransactionRow({ t, context }: any) {
+  const isDebtContext = context === 'all_debt' || context === 'debt' || context === 'customers';
+  
+  let amountSign = '+';
+  let colorStyle = 'text-emerald-400 bg-emerald-500/20';
+  let typeLabel = t.type;
+
+  if (isDebtContext) {
+    if (t.type === 'debt') { 
+      amountSign = '+'; 
+      colorStyle = 'text-rose-400 bg-rose-500/20'; 
+      typeLabel = 'Udhaar Diya (Baqiya)';
+    }
+    if (t.type === 'payment') { 
+      amountSign = '-'; 
+      colorStyle = 'text-emerald-400 bg-emerald-500/20'; 
+      typeLabel = 'Udhaar Wapsi (Jama)';
+    }
+  } else {
+    if (t.type === 'income') { 
+      amountSign = '+'; 
+      colorStyle = 'text-emerald-400 bg-emerald-500/20'; 
+      typeLabel = 'Kamai';
+    }
+    if (t.type === 'payment') { 
+      amountSign = '-'; 
+      colorStyle = 'text-emerald-400 bg-emerald-500/20'; 
+      typeLabel = 'Udhaar Wapsi (Jama)';
+    }
+    if (t.type === 'expense') { 
+      amountSign = '-'; 
+      colorStyle = 'text-rose-400 bg-rose-500/20'; 
+      typeLabel = 'Kharcha';
+    }
+    if (t.type === 'debt') { 
+      amountSign = '+'; 
+      colorStyle = 'text-blue-400 bg-blue-500/20'; 
+      typeLabel = 'Udhaar Diya';
+    }
+  }
+
+  const TypeIcon = t.type === 'income' ? Plus : 
+                   t.type === 'payment' ? CheckCircle2 :
+                   t.type === 'debt' ? CreditCard :
+                   Wallet;
+
+  let displayAmount = t.amount || 0;
+  let currentSign = amountSign;
+  
+  if (displayAmount < 0) {
+    currentSign = amountSign === '+' ? '-' : '+';
+    displayAmount = Math.abs(displayAmount);
+  }
+
   return (
-    <div className="p-5 glass rounded-2xl flex items-center justify-between hover:bg-white/5 transition-all border-none mb-2">
+    <div className="p-5 glass rounded-2xl flex items-center justify-between hover:bg-white/5 transition-all border-none mb-2 group cursor-pointer">
       <div className="flex items-center gap-4">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-inner ${
-          t.type === 'income' ? 'bg-emerald-500/20 text-emerald-400' : 
-          t.type === 'expense' ? 'bg-rose-500/20 text-rose-400' : 
-          t.type === 'payment' ? 'bg-amber-500/20 text-amber-400' :
-          'bg-blue-500/20 text-blue-400'
-        }`}>
-          {t.type === 'income' ? <Plus className="w-6 h-6" /> : 
-           t.type === 'payment' ? <CheckCircle2 className="w-6 h-6" /> :
-           <History className="w-6 h-6" />}
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-inner ${colorStyle}`}>
+          <TypeIcon className="w-6 h-6" />
         </div>
         <div>
-          <p className="font-bold text-lg leading-tight">{t.description}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-bold text-lg leading-tight">{t.description}</p>
+            {t.customerName && (
+              <span className="px-2 py-0.5 rounded-md bg-white/5 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                {t.customerName}
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider mt-1">
             {t.timestamp?.seconds ? format(new Date(t.timestamp.seconds * 1000), 'p, MMM d') : 'Just now'}
-            {t.customerName && ` • Target: ${t.customerName}`}
           </p>
         </div>
       </div>
       <div className="text-right">
         <p className={`text-xl font-bold font-mono tracking-tighter ${
-          t.type === 'income' || t.type === 'payment' ? 'text-emerald-400' : 
-          t.type === 'expense' ? 'text-rose-400' : 
-          'text-blue-400'
+          (currentSign === '+' || t.type === 'income' || (t.type === 'payment' && !isDebtContext)) ? 'text-emerald-400' : 'text-rose-400'
         }`}>
-          {t.type === 'expense' || t.type === 'debt' ? '-' : '+'}Rs. {t.amount?.toLocaleString()}
+          {currentSign}Rs. {displayAmount.toLocaleString()}
         </p>
-        <div className={`text-[8px] uppercase font-bold tracking-widest opacity-30 mt-1 ${
-          t.type === 'income' ? 'text-emerald-400' : 
-          t.type === 'expense' ? 'text-rose-400' : 
-          t.type === 'payment' ? 'text-amber-400' :
-          'text-blue-400'
-        }`}>
-          {t.type === 'payment' ? 'Udhar Wapsi' : t.type}
+        <div className="flex items-center gap-2 mt-1">
+          <div className={`text-[8px] uppercase font-bold tracking-widest opacity-60 flex items-center gap-1 ${
+            t.type === 'payment' ? 'text-emerald-400' : 
+            t.type === 'debt' ? 'text-rose-400' : ''
+          }`}>
+            {typeLabel}
+          </div>
+          {/* Removed MoreHorizontal button as per user request */}
         </div>
       </div>
+    </div>
+  );
+}
+
+function DayCard({ day }: { day: any }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const dailyEarnings = day.items
+    .filter((t: any) => t.type === 'income' || t.type === 'payment')
+    .reduce((acc: number, t: any) => acc + (t.amount || 0), 0);
+    
+  return (
+    <div className={`glass rounded-2xl border border-white/5 overflow-hidden transition-all ${isOpen ? 'bg-white/5' : 'hover:bg-white/5'}`}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="p-5 flex justify-between items-center cursor-pointer group"
+      >
+        <div className="flex items-center gap-4">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isOpen ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 text-emerald-400 group-hover:bg-emerald-500/20'}`}>
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-bold text-lg">{day.label}</h4>
+            <p className="text-xs text-slate-500">{day.date}</p>
+          </div>
+        </div>
+        <div className="text-right flex items-center gap-4">
+          <div>
+            <p className="text-sm font-mono font-bold text-emerald-400">Rs. {dailyEarnings.toLocaleString()}</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">Kamai</p>
+          </div>
+          <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+            <ChevronRight className="w-5 h-5 text-slate-500" />
+          </div>
+        </div>
+      </div>
+      
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-white/5 bg-slate-950/40"
+          >
+            <div className="p-4 space-y-2">
+              {day.items.map((t: any, idx: number) => (
+                <TransactionRow key={idx} t={t} context="history" />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -773,20 +1107,28 @@ function NavItem({ icon: Icon, label, active, onClick }: any) {
   );
 }
 
-function StatCard({ label, value, type, icon: Icon, onClick }: any) {
+function StatCard({ label, value, type, icon: Icon, active, onClick }: any) {
   const styles: any = {
-    up: 'text-emerald-400 bg-emerald-500/5 border-emerald-500/10 hover:bg-emerald-500/10',
-    down: 'text-rose-400 bg-rose-500/5 border-rose-500/10 hover:bg-rose-500/10',
-    debt: 'text-blue-400 bg-blue-500/5 border-blue-500/10 hover:bg-blue-500/10',
-    all: 'text-amber-400 bg-amber-500/5 border-amber-500/10 hover:bg-amber-500/10'
+    up: 'text-emerald-400 bg-emerald-500/5 border-emerald-500/10',
+    down: 'text-rose-400 bg-rose-500/5 border-rose-500/10',
+    debt: 'text-blue-400 bg-blue-500/5 border-blue-500/10',
+    all: 'text-amber-400 bg-amber-500/5 border-amber-500/10'
+  };
+
+  const activeStyles: any = {
+    up: 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/20',
+    down: 'border-rose-500 bg-rose-500/10 ring-1 ring-rose-500/20',
+    debt: 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/20',
+    all: 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/20'
   };
 
   const currentStyle = styles[type] || styles.debt;
+  const activeStyle = active ? activeStyles[type] : '';
 
   return (
     <div 
       onClick={onClick}
-      className={`p-6 glass-card border-white/5 relative overflow-hidden group hover:scale-[1.02] transition-transform cursor-pointer ${currentStyle.split(' ')[1] || ''}`}
+      className={`p-6 glass-card border flex flex-col relative overflow-hidden group hover:scale-[1.02] transition-all cursor-pointer ${activeStyle} ${!active ? 'border-white/5' : ''}`}
     >
       <div className={`p-2.5 glass rounded-xl w-fit mb-4 ${currentStyle}`}>
         <Icon className="w-5 h-5" />

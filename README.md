@@ -1,20 +1,28 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Control Your Business (COB)
 
-# Run and deploy your AI Studio app
+An AI-powered business management app for shopkeepers. Features voice-to-text record keeping, debt tracking (udhari), and AI business memory using Gemini.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/99fa996b-4a6f-408b-8eb5-5125c42d42ae
+- **Voice First**: Record sales, expenses, and debts using your voice (Urdu/Hindi supported).
+- **Daily Sessions**: "Start Shop" and "End Shop" to keep track of daily business.
+- **Debt Management**: Track customer debts (Udhaar) and payments (Ardē).
+- **AI Assistant**: Ask COB about your business history ("Ajj kitni sale hui?", "Ahmed ka kitna udhaar hai?").
+- **WhatsApp Sync**: Manage products and prices for AI-powered WhatsApp replies.
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- **Frontend**: React 19, Vite, Tailwind CSS, Motion.
+- **AI**: Gemini Pro (via @google/genai).
+- **Backend / DB**: Firebase (Firestore & Auth) - currently in simulated mode.
 
+## Setup
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Clone the repository.
+2. Run `npm install`.
+3. Create a `.env` file based on `.env.example` and add your `GEMINI_API_KEY`.
+4. Run `npm run dev` to start the development server.
+
+## Deployment
+
+The app is compatible with standard static site hosting (Vercel, Netlify, GitHub Pages) if backend is purely client-side/simulated, or Cloud Run for full-stack deployment.

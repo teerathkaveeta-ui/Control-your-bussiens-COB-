@@ -70,10 +70,23 @@ export const addTransaction = async (businessId: string, data: any) => {
   });
 };
 
-export const getRecentTransactions = async (businessId: string, limitCount = 10) => {
+export const getRecentTransactions = async (businessId: string, limitCount = 20) => {
   if (isSimulated) {
-    const transactions = JSON.parse(localStorage.getItem('transactions') || '[]');
-    return transactions.sort((a: any, b: any) => b.timestamp.seconds - a.timestamp.seconds).slice(0, limitCount);
+    try {
+      const transactions = JSON.parse(localStorage.getItem('transactions') || '[]');
+      if (!Array.isArray(transactions)) return [];
+      
+      return transactions
+        .sort((a: any, b: any) => {
+          const timeA = a.timestamp?.seconds || 0;
+          const timeB = b.timestamp?.seconds || 0;
+          return timeB - timeA;
+        })
+        .slice(0, limitCount);
+    } catch (e) {
+      console.error("Local transactions parse error:", e);
+      return [];
+    }
   }
   const colRef = collection(db, 'businesses', businessId, 'transactions');
   const q = query(colRef, orderBy('timestamp', 'desc'), limit(limitCount));
