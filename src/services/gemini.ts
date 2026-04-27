@@ -19,6 +19,7 @@ export const parseBusinessInput = async (input: string) => {
        - "debt" (Udhaar) is when YOU GIVE items/money to a customer on credit. Phrases: "udhar diya", "khata me likh lo", "Ahmed ko 200 ki cheez di".
        - "income" (Kamai) is general sales.
        - "expense" (Kharcha) is shop expenses (e.g., buying stock, paying electric bill).
+       - IMPORTANT: If the user just says a number or "₹100" without context, default to type "income" and description "Sale".
        - IMPORTANT: If the user says they "returned goods" or "received a refund" for an expense (e.g., "5000 ka maal wapis kar diya"), use type "expense" but make the amount NEGATIVE (e.g., amount: -5000).
        - IMPORTANT: If a customer returns a sale (refund), use type "income" but make the amount NEGATIVE.
        - IMPORTANT: For "debt" or "payment", ALWAYS include the customer's name in the description field like "Item Name (Customer Name)". 
