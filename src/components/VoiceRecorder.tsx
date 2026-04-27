@@ -12,14 +12,26 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
   const [recognition, setRecognition] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const onTranscriptRef = React.useRef(onTranscript);
+  const isRecordingRef = React.useRef(false);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
   }, [onTranscript]);
 
+  const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const accumulatedRef = React.useRef('');
+  const interimRef = React.useRef('');
+  const recognitionRef = React.useRef<any>(null);
+  const isStartingRef = React.useRef(false);
+
   useEffect(() => {
-    // @ts-ignore
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setErrorMessage("Aapka browser voice support nahi karta. Google Chrome use karein.");
+      return;
+    }
+    
     if (SpeechRecognition && !recognition) {
       const recognitionInstance = new SpeechRecognition();
       recognitionInstance.continuous = true;
@@ -27,94 +39,141 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       recognitionInstance.lang = 'ur-PK';
 
       recognitionInstance.onstart = () => {
+        isRecordingRef.current = true;
         setIsRecording(true);
+        isStartingRef.current = false;
+        setErrorMessage(null);
+        console.log("Speech recognition started");
       };
 
       recognitionInstance.onresult = (event: any) => {
-        const results = event.results;
-        for (let i = event.resultIndex; i < results.length; i++) {
-          if (results[i].isFinal) {
-            const transcript = results[i][0].transcript;
-            if (transcript) {
-              onTranscriptRef.current(transcript);
-              recognitionInstance.stop(); // Stop after one final bit
-            }
+        let final = '';
+        let interim = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          const transcript = result[0].transcript;
+          if (result.isFinal) {
+            final += transcript + ' ';
+          } else {
+            interim += transcript;
           }
         }
+        
+        if (final) {
+          accumulatedRef.current += final;
+          setAccumulatedTranscript(accumulatedRef.current);
+          console.log("Final transcript chunk:", final);
+        }
+        interimRef.current = interim;
+        setInterimTranscript(interim);
       };
 
       recognitionInstance.onerror = (event: any) => {
         console.error("Speech recognition error:", event.error);
+        if (event.error === 'aborted') return; // Ignore intentional stops
+        
+        isStartingRef.current = false;
+        isRecordingRef.current = false;
         setIsRecording(false);
-        if (event.error === 'not-allowed') {
-          setErrorMessage("Mic permission deni pare gi.");
+        
+        if (event.error === 'no-speech') {
+          setErrorMessage("Kuch sunai nahi diya. Dubara boleiye.");
+        } else if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+          setErrorMessage("Mic permission blocked hai. Browser bar me 'Lock' icon pe click kr k allow karein.");
         } else if (event.error === 'network') {
-          setErrorMessage("Internet ka masla lag raha hai.");
+          setErrorMessage("Internet slow hai ya band hai. Check karein.");
         } else {
-          setErrorMessage("Mic mein masla hai. Refresh karein.");
+          setErrorMessage("Mic Masla: " + event.error + ". Browser refresh karein.");
         }
       };
 
       recognitionInstance.onend = () => {
-        setIsRecording(false);
+        // Only restart if we REALLY intended to keep recording and it ended unexpectedly
+        // However, auto-restart is what causes the "toong" sound loop.
+        // Let's DISALLOW auto-restart for now to fix the loop.
+        if (isRecordingRef.current && !isStartingRef.current) {
+          console.log("Recognition ended while recording was on. Usually silence timeout.");
+          // We will reset the UI state to allow user to record again instead of forcing a loop
+          setIsRecording(false);
+          isRecordingRef.current = false;
+          
+          // Try to process whatever we had
+          const finalFull = (accumulatedRef.current + ' ' + interimRef.current).trim();
+          if (finalFull) {
+            onTranscriptRef.current(finalFull);
+            accumulatedRef.current = '';
+            interimRef.current = '';
+            setAccumulatedTranscript('');
+            setInterimTranscript('');
+          }
+        } else {
+          setIsRecording(false);
+          isStartingRef.current = false;
+        }
       };
 
+      recognitionRef.current = recognitionInstance;
       setRecognition(recognitionInstance);
     }
-  }, [recognition]); // Run once or if recognition is lost
-
-  // Manual fallback for stuck states
-  useEffect(() => {
-    const checkState = setInterval(() => {
-      if (isRecording && recognition && !('state' in recognition || true)) {
-         // Some browsers might need active polling if events fail
-      }
-    }, 1000);
-    return () => clearInterval(checkState);
-  }, [isRecording, recognition]);
-
-  // Cleanup/timeout if recording hangs
-  useEffect(() => {
-    let timer: any;
-    if (isRecording) {
-      timer = setTimeout(() => {
-        if (recognition) {
-          recognition.stop();
-          setIsRecording(false);
-        }
-      }, 15000); // 15 seconds max listen
-    }
-    return () => clearTimeout(timer);
-  }, [isRecording, recognition]);
+  }, [recognition]);
 
   const toggleRecording = () => {
-    if (isRecording) {
+    if (isRecordingRef.current) {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      isStartingRef.current = false;
       try {
         recognition?.stop();
-        setIsRecording(false);
+        // Use timeout to ensure state has updated from final result
+        setTimeout(() => {
+          const finalFull = (accumulatedRef.current + ' ' + interimRef.current).trim();
+          if (finalFull) {
+            onTranscriptRef.current(finalFull);
+          }
+          accumulatedRef.current = '';
+          interimRef.current = '';
+          setAccumulatedTranscript('');
+          setInterimTranscript('');
+        }, 300);
       } catch (e) {
         console.error("Stop failed:", e);
-        setIsRecording(false);
       }
     } else {
       if (!recognition) {
-        console.error("Recognition not initialized");
+        setErrorMessage("Restart the app please.");
         return;
       }
+      if (isStartingRef.current || isProcessing) return;
+      
       try {
+        setAccumulatedTranscript('');
+        setInterimTranscript('');
+        accumulatedRef.current = '';
+        interimRef.current = '';
         setErrorMessage(null);
+        isStartingRef.current = true;
+        isRecordingRef.current = true;
         recognition.start();
       } catch (err) {
-        console.error("Recognition start failed:", err);
+        isStartingRef.current = false;
+        isRecordingRef.current = false;
         setIsRecording(false);
-        try { recognition.stop(); } catch(e) {}
-        setErrorMessage("Mic start nahi ho raha.");
+        setErrorMessage("Mic start nahi ho raha. Refresh karein.");
       }
     }
   };
 
   return (
     <div className="flex flex-col items-center gap-6 py-6">
+      {/* Show interim text for feedback */}
+      {(accumulatedTranscript || interimTranscript) && isRecording && (
+        <div className="glass px-6 py-3 rounded-2xl max-w-xs animate-pulse border-white/10 bg-white/5">
+          <p className="text-xs text-slate-300 italic text-center">
+            {accumulatedTranscript} <span className="opacity-50">{interimTranscript}</span>
+          </p>
+        </div>
+      )}
       <div className="relative group">
         {/* Hardware-like bezel */}
         <div className={`absolute -inset-4 rounded-full blur-xl transition-opacity duration-1000 ${

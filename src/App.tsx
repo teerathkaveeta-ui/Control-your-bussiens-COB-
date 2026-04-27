@@ -61,14 +61,35 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
           <AlertCircle className="w-16 h-16 text-rose-500 mb-4" />
           <h1 className="text-2xl font-bold text-white mb-2">Kuch masla ho gaya!</h1>
-          <p className="text-slate-400 mb-6 max-w-xs">App reset ho rahi hai, please thora intezar krein.</p>
-          <button onClick={() => window.location.reload()} className="bg-emerald-500 text-slate-950 px-6 py-2 rounded-xl font-bold">Refresh App</button>
+          <p className="text-slate-400 mb-6 max-w-xs">App reset ho rahi hai, please thora intezar krein ya refresh karein.</p>
+          <div className="flex gap-4">
+            <button onClick={() => window.location.reload()} className="bg-emerald-500 text-slate-950 px-6 py-2 rounded-xl font-bold">Refresh App</button>
+            <button 
+              onClick={() => {
+                localStorage.clear();
+                window.location.reload();
+              }} 
+              className="bg-rose-500/20 text-rose-400 px-6 py-2 rounded-xl font-bold border border-rose-500/30"
+            >
+              Clear Cache & Reset
+            </button>
+          </div>
         </div>
       );
     }
     return this.props.children;
   }
 }
+
+const safeFormat = (date: any, formatStr: string, fallback = '...') => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return format(d, formatStr);
+  } catch (e) {
+    return fallback;
+  }
+};
 
 export default function App() {
   return (
@@ -83,7 +104,7 @@ function MainApp() {
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [view, setView] = useState<'dashboard' | 'history' | 'customers' | 'ai' | 'whatsapp' | 'alldays'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'history' | 'customers' | 'ai' | 'whatsapp' | 'alldays' | 'store'>('dashboard');
   const [activeStatFilter, setActiveStatFilter] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
@@ -95,9 +116,22 @@ function MainApp() {
   const [shopOn, setShopOn] = useState(false);
   const [lastSessionStart, setLastSessionStart] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [coins, setCoins] = useState(0);
+  const [coins, setCoins] = useState(1500); 
   const [shopSize, setShopSize] = useState('Small');
   const [chatInput, setChatInput] = useState('');
+  const [transcriptQueue, setTranscriptQueue] = useState<string[]>([]);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualEntry, setManualEntry] = useState({ amount: '', type: 'income', description: '', customerName: '' });
+  const lastProcessedTranscript = React.useRef<string | null>(null);
+
+  // Effect to process transcript queue
+  useEffect(() => {
+    if (transcriptQueue.length > 0 && !isProcessing) {
+      const nextTranscript = transcriptQueue[0];
+      setTranscriptQueue(prev => prev.slice(1));
+      processTranscript(nextTranscript);
+    }
+  }, [transcriptQueue, isProcessing]);
 
   async function loadData(uid: string) {
     try {
@@ -107,13 +141,30 @@ function MainApp() {
       
       // Load products too
       const p = localStorage.getItem(`products_${uid}`);
-      if (p) setProducts(JSON.parse(p));
+      if (p) {
+        try {
+          const parsedP = JSON.parse(p);
+          if (Array.isArray(parsedP)) setProducts(parsedP);
+        } catch (e) {
+          console.error("Products parse error", e);
+        }
+      }
       
       const n = localStorage.getItem(`notifications_${uid}`);
-      if (n) setNotifications(JSON.parse(n));
+      if (n) {
+        try {
+          const parsedN = JSON.parse(n);
+          if (Array.isArray(parsedN)) setNotifications(parsedN);
+        } catch (e) {
+          console.error("Notifications parse error", e);
+        }
+      }
 
       const c = localStorage.getItem(`coins_${uid}`);
-      if (c) setCoins(parseInt(c));
+      if (c) {
+        const parsedC = parseInt(c);
+        if (!isNaN(parsedC)) setCoins(parsedC);
+      }
 
       const s = localStorage.getItem(`shopSize_${uid}`);
       if (s) setShopSize(s);
@@ -215,7 +266,17 @@ function MainApp() {
     const newState = !shopOn;
     await setShopStatus(newState);
     setShopOn(newState);
-    const msg = newState ? "Dukan khul gayi hai." : "Dukan barha di gayi hai.";
+    
+    if (newState) {
+      const now = Date.now();
+      setLastSessionStart(now);
+      localStorage.setItem('lastSessionStart', now.toString());
+    } else {
+      setLastSessionStart(null);
+      localStorage.removeItem('lastSessionStart');
+    }
+
+    const msg = newState ? "Dukan khul gayi hai. Barkat barsay!" : "Dukan barha di gayi hai. Kal milain ge.";
     setAiResponse(msg);
     speak(msg);
   };
@@ -261,69 +322,107 @@ function MainApp() {
     }
   };
 
-  const handleTranscript = async (transcript: string) => {
+  const handleTranscript = (transcript: string) => {
     if (!user) return;
+    setTranscriptQueue(prev => [...prev, transcript]);
+  };
+
+  const processTranscript = async (transcript: string) => {
+    if (!transcript.trim()) {
+      console.log("Skipping empty transcript");
+      return;
+    }
+    
     setIsProcessing(true);
+    console.log("Processing transcript:", transcript);
     
     // Safety timeout to prevent infinite processing state
-    const timeoutDuration = 20000; // Increased to 20 seconds
+    const timeoutDuration = 25000; 
     const processingTimeout = setTimeout(() => {
-      if (isProcessing) {
-        setIsProcessing(false);
-        setAiResponse("Network ya server thora slow hai. Dobara koshish karein.");
-        speak("Network thora slow hai. Dobara koshish karein.");
-      }
+      setIsProcessing(prev => {
+        if (prev) {
+          setAiResponse("Sain! Response thora slow hai. Network check krein ya dobara boliye.");
+          speak("Response slow hai. Dobara boliye.");
+          return false;
+        }
+        return prev;
+      });
     }, timeoutDuration);
 
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("GEMINI_API_KEY is missing. Please add it to Settings.");
+      }
+
       const result = await parseBusinessInput(transcript);
       clearTimeout(processingTimeout);
       
-      if (!isProcessing) return; // Prevent late updates
+      if (result.intent === 'record' && result.actions) {
+        let fullResponse = "";
+        let recordedCount = 0;
 
-      if (result.intent === 'record') {
-        const parsed = result.data;
-        await addTransaction(user.uid, {
-          ...parsed,
-          rawInput: transcript,
-        });
-
-        if ((parsed.type === 'debt' || parsed.type === 'payment') && parsed.customerName) {
-          let actualAmount = parsed.amount;
+        for (const actionData of result.actions) {
+          const parsed = actionData;
           
-          // Full settlement case (amount: -1)
-          if (actualAmount === -1) {
-            // Calculate current balance for this customer
-            const balance = transactions.reduce((acc, currentT) => {
-              if (currentT.customerName === parsed.customerName) {
-                if (currentT.type === 'debt') return acc + (currentT.amount || 0);
-                if (currentT.type === 'payment') return acc - (currentT.amount || 0);
-              }
-              return acc;
-            }, 0);
-            actualAmount = balance;
-            parsed.amount = balance; // Update for record
+          if (!parsed.amount || isNaN(parsed.amount) || parsed.amount === 0) {
+            console.log("Skipping action with invalid amount", parsed);
+            continue;
           }
 
-          const debtChange = parsed.type === 'payment' ? -actualAmount : actualAmount;
-          await updateCustomerDebt(user.uid, parsed.customerName, debtChange);
+          await addTransaction(user.uid, {
+            ...parsed,
+            rawInput: transcript,
+          });
+
+          recordedCount++;
+
+          if ((parsed.type === 'debt' || parsed.type === 'payment') && parsed.customerName) {
+            let actualAmount = parsed.amount;
+            
+            if (actualAmount === -1) {
+              const balance = transactions.reduce((acc, currentT) => {
+                if (currentT.customerName === parsed.customerName) {
+                  if (currentT.type === 'debt') return acc + (currentT.amount || 0);
+                  if (currentT.type === 'payment') return acc - (currentT.amount || 0);
+                }
+                return acc;
+              }, 0);
+              actualAmount = balance;
+              parsed.amount = balance;
+            }
+
+            const debtChange = parsed.type === 'payment' ? -actualAmount : actualAmount;
+            await updateCustomerDebt(user.uid, parsed.customerName, debtChange);
+          }
+
+          const actionText = parsed.type === 'payment' 
+            ? `Rs. ${parsed.amount} wapsi.`
+            : parsed.type === 'debt'
+            ? `Rs. ${parsed.amount} udhaar.`
+            : parsed.type === 'income'
+            ? `Rs. ${parsed.amount} kamai.`
+            : `Rs. ${parsed.amount} record.`;
+          fullResponse += actionText + " ";
         }
 
-        await loadData(user.uid);
-        const responseText = parsed.type === 'payment' 
-          ? `COB ne Rs. ${parsed.amount} ki wapsi record kar li hai.`
-          : `COB ne Rs. ${parsed.amount} record kar liya hai. Description: ${parsed.description}.`;
-        setAiResponse(responseText);
-        speak(responseText);
+        if (recordedCount > 0) {
+          await loadData(user.uid);
+          const finalMsg = "Zabardast! COB ne record kar liya: " + fullResponse;
+          setAiResponse(finalMsg);
+          speak(finalMsg);
+        } else {
+          const failMsg = "Sain! COB ko amount samajh nahi aaya. '100 rupay kamai' aise bole.";
+          setAiResponse(failMsg);
+          speak(failMsg);
+        }
       } else if (result.intent === 'query') {
-        // Question mode
-        const context = transactions.slice(0, 50).map(t => 
+        const context = transactions.slice(0, 60).map(t => 
           `${t.description}: Rs. ${t.amount} (${t.type})${t.customerName ? ' for ' + t.customerName : ''}`
         ).join('\n');
         
         const answer = await answerBusinessQuestion(result.question, context, products, coins, shopSize);
-        
-        // Check for specific actions in AI response (simulated triggers)
+        clearTimeout(processingTimeout);
+
         if (answer.includes('UPGRADE_SUCCESS')) {
           setCoins(prev => prev - 1000);
           const nextSize = shopSize === 'Small' ? 'Medium' : shopSize === 'Medium' ? 'Large' : 'Palatial';
@@ -334,17 +433,7 @@ function MainApp() {
           return;
         }
 
-        if (answer.includes('AD_WATCHED')) {
-          setCoins(prev => prev + 100);
-          const cleanAnswer = answer.replace('AD_WATCHED', '').trim();
-          setAiResponse(cleanAnswer);
-          speak(cleanAnswer);
-          return;
-        }
-
-        // Detect missing product in AI response to create an alert
         if (answer.toLowerCase().includes('rate list mein nahi') || answer.toLowerCase().includes('available nahi')) {
-           // Try to extract the item name if possible, or just generate a generic alert
            const match = transcript.match(/(hai|rate|price|btayen) (.*)/i);
            const itemName = match ? match[2] : "Unknown Item";
            
@@ -352,7 +441,7 @@ function MainApp() {
              setNotifications([{
                id: Date.now(),
                item: itemName,
-               message: `AI ko "${itemName}" nahi mila. Rate list mein add karein?`,
+               message: `Sain! "${itemName}" rate list mein nahi mila. Kya add karu?`,
                timestamp: new Date().toISOString(),
                rawTranscript: transcript
              }, ...notifications]);
@@ -362,13 +451,23 @@ function MainApp() {
         setAiResponse(answer);
         speak(answer);
       }
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(processingTimeout);
       console.error("Failed to process voice:", error);
-      const errorMsg = "COB ko samajh nahi aaya. Dubara boliye?";
+      let errorMsg = "Sain! COB ko apka baat samajh nahi aaya. Thora saaf Urdu me boliye.";
+      
+      if (error?.message?.includes('GEMINI_API_KEY')) {
+        errorMsg = "Sain! Gemini API key ka koi masla hai. Settings me check karein.";
+      } else if (error?.message?.includes('permission')) {
+        errorMsg = "API permission denied. Key check karein.";
+      }
+      
       setAiResponse(errorMsg);
       speak(errorMsg);
     } finally {
       setIsProcessing(false);
+      // Clear safety timeout just in case
+      clearTimeout(processingTimeout);
     }
   };
 
@@ -383,7 +482,7 @@ function MainApp() {
         else if (ts?.seconds) date = new Date(ts.seconds * 1000);
         else date = new Date();
 
-        const dateStr = format(date, 'yyyy-MM-dd');
+        const dateStr = safeFormat(date, 'yyyy-MM-dd');
         if (!groups[dateStr]) groups[dateStr] = [];
         groups[dateStr].push(t);
       });
@@ -401,7 +500,7 @@ function MainApp() {
         return {
           id: date,
           label: `Day ${dayNumber}`,
-          date: format(new Date(date), 'PPP'),
+          date: safeFormat(date, 'PPP'),
           items: groups[date]
         };
       });
@@ -413,11 +512,13 @@ function MainApp() {
 
   const dayWiseHistory = groupTransactionsByDay();
 
-  // Filter transactions for "Daily" counts based on shop session
-  const dailyTransactions = shopOn ? transactions.filter(t => {
+  // Filter transactions for "Daily" counts (Today's totals)
+  const dailyTransactions = transactions.filter(t => {
     const tTime = t.timestamp?.toDate ? t.timestamp.toDate().getTime() : (t.timestamp?.seconds * 1000 || Date.now());
-    return lastSessionStart ? tTime >= lastSessionStart : true;
-  }) : [];
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    return tTime >= startOfToday.getTime();
+  });
 
   const totalIncome = dailyTransactions
     .filter(t => t.type === 'income' || t.type === 'payment')
@@ -455,12 +556,11 @@ function MainApp() {
       <div className="flex flex-col gap-2 flex-grow overflow-x-auto lg:overflow-visible no-scrollbar pb-4 lg:pb-0">
         <NavItem icon={BarChart3} label="Dashboard" active={view === 'dashboard'} onClick={() => { setView('dashboard'); setIsMobileMenuOpen(false); }} />
         <NavItem icon={History} label="Ajj ka Hisab" active={view === 'history'} onClick={() => { setView('history'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={Calendar} label="All Days (Haftawar)" active={view === 'alldays'} onClick={() => { setView('alldays'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={Users} label={`Kul Udhaar (Rs. ${totalDebtBalance.toLocaleString()})`} active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={IndianRupee} label={`Coins: ${coins}`} active={false} onClick={() => {}} />
-        <NavItem icon={Store} label={`Size: ${shopSize}`} active={false} onClick={() => {}} />
+        <NavItem icon={Users} label={`Udhaar (Rs. ${totalDebtBalance})`} active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
         <NavItem icon={ShoppingBag} label="Rate List & Stock" active={view === 'whatsapp'} onClick={() => { setView('whatsapp'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={MessageSquare} label="AI WhatsApp Bot" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={MessageSquare} iconColor="text-[#25D366]" label="AI WhatsApp Bot" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={IndianRupee} label={`Shop Store (${coins} Coins)`} active={view === 'store'} onClick={() => { setView('store'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={Calendar} label="Purana Hisab" active={view === 'alldays'} onClick={() => { setView('alldays'); setIsMobileMenuOpen(false); }} />
       </div>
 
       <div className="pt-6 border-t border-white/5">
@@ -534,7 +634,7 @@ function MainApp() {
             <Logo />
             <span className="font-bold">COB</span>
           </div>
-          <img src={user.photoURL} alt={user.displayName} className="w-8 h-8 rounded-full border border-white/10" />
+          <img src={user.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=owner'} alt={user.displayName || 'Owner'} className="w-8 h-8 rounded-full border border-white/10" />
         </header>
 
         <section className="flex justify-between items-start mb-12">
@@ -599,36 +699,148 @@ function MainApp() {
         </div>
 
         {/* Voice Control Core */}
-        <section className="glass rounded-[2rem] p-10 flex flex-col items-center mb-12 shadow-inner border shadow-white/5">
-          <VoiceRecorder onTranscript={handleTranscript} isProcessing={isProcessing} />
-          
-          <div className="mt-8 w-full max-w-lg relative group">
-            <input 
-              type="text" 
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="COB ko batayein..." 
-              className="w-full glass bg-white/5 rounded-2xl py-5 px-6 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-light italic text-base placeholder:text-slate-600 shadow-2xl"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && chatInput.trim()) {
-                  handleTranscript(chatInput);
-                  setChatInput('');
-                }
-              }}
-            />
-            <button 
-              onClick={() => {
-                if (chatInput.trim()) {
-                  handleTranscript(chatInput);
-                  setChatInput('');
-                }
-              }}
-              className="absolute right-3 top-3 p-3 bg-emerald-500 rounded-xl shadow-xl shadow-emerald-500/30 active:scale-90 hover:bg-emerald-400 transition-all group/btn flex items-center justify-center cursor-pointer"
-            >
-              <Send className="w-5 h-5 text-slate-950 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
-            </button>
+        <section className="glass rounded-[2rem] p-10 flex flex-col items-center mb-12 shadow-inner border shadow-white/5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4">
+             <button 
+              onClick={() => setShowManualForm(!showManualForm)}
+              className="px-3 py-1.5 bg-slate-800 text-slate-400 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:text-white transition-colors border border-white/5"
+             >
+                {showManualForm ? "Use Voice" : "Manual Entry"}
+             </button>
           </div>
 
+          {!showManualForm ? (
+            <>
+              <VoiceRecorder onTranscript={handleTranscript} isProcessing={isProcessing} />
+              
+              {isProcessing && (
+                <div className="flex flex-col items-center gap-2 mt-4">
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
+                  <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">COB is Thinking...</p>
+                  <button 
+                    onClick={() => setIsProcessing(false)}
+                    className="text-[9px] text-slate-500 underline hover:text-white mt-2"
+                  >
+                    Stuck? Cancel Processing
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-8 w-full max-w-lg relative group">
+                <input 
+                  type="text" 
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="COB ko batayein (Boliye ya Type krein)..." 
+                  className="w-full glass bg-white/5 rounded-2xl py-5 px-6 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-light italic text-base placeholder:text-slate-600 shadow-2xl"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && chatInput.trim()) {
+                      handleTranscript(chatInput);
+                      setChatInput('');
+                    }
+                  }}
+                />
+                <button 
+                  onClick={() => {
+                    if (chatInput.trim()) {
+                      handleTranscript(chatInput);
+                      setChatInput('');
+                    }
+                  }}
+                  className="absolute right-3 top-3 p-3 bg-emerald-500 rounded-xl shadow-xl shadow-emerald-500/30 active:scale-90 hover:bg-emerald-400 transition-all group/btn flex items-center justify-center cursor-pointer"
+                >
+                  <Send className="w-5 h-5 text-slate-950 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="w-full max-w-lg space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+               <h3 className="text-xl font-bold text-center mb-2">Manual Record Karein</h3>
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Amount (Rs.)</label>
+                    <input 
+                      type="number" 
+                      placeholder="0" 
+                      className="w-full glass bg-white/10 p-4 rounded-xl text-lg font-bold border-white/10"
+                      value={manualEntry.amount}
+                      onChange={e => setManualEntry({...manualEntry, amount: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Type</label>
+                    <select 
+                      className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10 appearance-none"
+                      value={manualEntry.type}
+                      onChange={e => setManualEntry({...manualEntry, type: e.target.value})}
+                    >
+                      <option value="income">Income (Kamai)</option>
+                      <option value="expense">Expense (Kharcha)</option>
+                      <option value="debt">Udhaar (Debt)</option>
+                      <option value="payment">Jama (Payment)</option>
+                    </select>
+                  </div>
+               </div>
+               <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Customer Name (Optional for Udhaar/Jama)</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Ahmed, Sahil" 
+                    className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
+                    value={manualEntry.customerName}
+                    onChange={e => setManualEntry({...manualEntry, customerName: e.target.value})}
+                  />
+               </div>
+               <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Kaam / Description</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Sale, Bijli Bill" 
+                    className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
+                    value={manualEntry.description}
+                    onChange={e => setManualEntry({...manualEntry, description: e.target.value})}
+                  />
+               </div>
+               <button 
+                onClick={async () => {
+                  if (!manualEntry.amount || !manualEntry.description) return;
+                  setIsProcessing(true);
+                  try {
+                    const amountNum = parseFloat(manualEntry.amount);
+                    await addTransaction(user.uid, {
+                      amount: amountNum,
+                      type: manualEntry.type,
+                      description: manualEntry.description,
+                      customerName: manualEntry.customerName || null
+                    });
+                    
+                    if (manualEntry.customerName && (manualEntry.type === 'debt' || manualEntry.type === 'payment')) {
+                      const debtChange = manualEntry.type === 'payment' ? -amountNum : amountNum;
+                      await updateCustomerDebt(user.uid, manualEntry.customerName, debtChange);
+                    }
+                    
+                    await loadData(user.uid);
+                    setAiResponse("Zabardast! Manual entry record ho gayi hai.");
+                    setManualEntry({ amount: '', type: 'income', description: '', customerName: '' });
+                    setShowManualForm(false);
+                    speak("Record update ho gaya hai.");
+                  } catch (e) {
+                    setAiResponse("Koi masla aa gaya manual check me.");
+                  } finally {
+                    setIsProcessing(false);
+                  }
+                }}
+                className="w-full py-4 bg-emerald-500 text-slate-950 font-bold rounded-2xl shadow-xl shadow-emerald-500/20 active:scale-95 transition-all text-lg"
+               >
+                 Ajj ka Record Save Karein
+               </button>
+            </div>
+          )}
+          
           <AnimatePresence>
             {aiResponse && (
               <motion.div
@@ -750,196 +962,283 @@ function MainApp() {
               </div>
             )}
 
-            {view === 'ai' && (
+            {(view === 'ai' || view === 'whatsapp') && (
               <div className="p-8 space-y-8">
-                <div className="glass rounded-3xl p-8 bg-emerald-500/5 border-emerald-500/20 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <MessageSquare className="w-32 h-32 text-emerald-500" />
-                  </div>
-                  <h4 className="font-bold text-2xl text-emerald-400 mb-4 flex items-center gap-3">
-                    <Smartphone className="w-6 h-6" /> WhatsApp Business Bot
-                  </h4>
-                  <p className="text-slate-300 mb-8 max-w-xl leading-relaxed italic text-sm">
-                    "Connect your WhatsApp to let COB answer customer price queries automatically."
-                  </p>
-                  
-                  <div className="space-y-4 max-w-sm ml-auto scale-90 origin-right">
-                    <div className="glass px-4 py-3 rounded-2xl rounded-tr-none bg-blue-500/10 border-blue-500/20 ml-auto">
-                      <p className="text-[8px] text-blue-300 mb-1 font-mono uppercase font-bold opacity-50">Customer</p>
-                      <p className="text-xs">Sugar ka kya rate hai?</p>
-                    </div>
-                    <div className="glass px-4 py-3 rounded-2xl rounded-tl-none bg-emerald-500/20 border-emerald-500/30">
-                      <p className="text-[8px] text-emerald-400 mb-1 font-mono uppercase font-bold opacity-50">COB Bot</p>
-                      <p className="text-xs">Aaj sugar 145 Rs per kg hai.</p>
-                    </div>
-                  </div>
-                  
-                  <button className="mt-8 w-full py-4 bg-emerald-500 text-slate-950 font-bold rounded-2xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all">
-                    Link WhatsApp Number
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setView('ai')}
+                    className={`flex-1 py-4 px-6 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 ${
+                      view === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-xl shadow-emerald-500/20' : 'bg-white/5 text-slate-400 border border-white/5'
+                    }`}
+                  >
+                    <Smartphone className="w-5 h-5" /> Bot Settings
+                  </button>
+                  <button 
+                    onClick={() => setView('whatsapp')}
+                    className={`flex-1 py-4 px-6 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 ${
+                      view === 'whatsapp' ? 'bg-emerald-500 text-slate-950 shadow-xl shadow-emerald-500/20' : 'bg-white/5 text-slate-400 border border-white/5'
+                    }`}
+                  >
+                    <ShoppingBag className="w-5 h-5" /> Rate List & Stock
                   </button>
                 </div>
-
-                {/* Bot Alerts Section */}
-                {notifications.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-bold flex items-center gap-2">
-                        <Bell className="w-4 h-4 text-rose-400" />
-                        Bot Alerts (Missing Items)
+                
+                {view === 'ai' ? (
+                  <>
+                    <div className="glass rounded-3xl p-8 bg-emerald-500/5 border-emerald-500/20 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <MessageSquare className="w-32 h-32 text-emerald-500" />
+                      </div>
+                      <h4 className="font-bold text-2xl text-emerald-400 mb-4 flex items-center gap-3">
+                        <Smartphone className="w-6 h-6" /> WhatsApp Business Bot
                       </h4>
-                      <button 
-                        onClick={() => setNotifications([])}
-                        className="text-[10px] uppercase font-bold text-slate-500 hover:text-rose-400 underline"
-                      >
-                        Clear All
+                      <p className="text-slate-300 mb-8 max-w-xl leading-relaxed italic text-sm">
+                        "Connect your WhatsApp to let COB answer customer price queries automatically."
+                      </p>
+                      
+                      <div className="space-y-4 max-w-sm ml-auto scale-90 origin-right">
+                        <div className="glass px-4 py-3 rounded-2xl rounded-tr-none bg-blue-500/10 border-blue-500/20 ml-auto">
+                          <p className="text-[8px] text-blue-300 mb-1 font-mono uppercase font-bold opacity-50">Customer</p>
+                          <p className="text-xs">Sugar ka kya rate hai?</p>
+                        </div>
+                        <div className="glass px-4 py-3 rounded-2xl rounded-tl-none bg-emerald-500/20 border-emerald-500/30">
+                          <p className="text-[8px] text-emerald-400 mb-1 font-mono uppercase font-bold opacity-50">COB Bot</p>
+                          <p className="text-xs">Aaj sugar 145 Rs per kg hai.</p>
+                        </div>
+                      </div>
+                      
+                      <button className="mt-8 w-full py-4 bg-emerald-500 text-slate-950 font-bold rounded-2xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all">
+                        Link WhatsApp Number
                       </button>
                     </div>
-                    <div className="grid grid-cols-1 gap-3">
-                      {notifications.map((n) => (
-                        <div key={n.id} className="glass p-5 rounded-2xl border-rose-500/20 bg-rose-500/5 flex justify-between items-center group shadow-lg">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-rose-400 shadow-inner">
-                              <ShoppingBag className="w-6 h-6" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-slate-200">{n.message}</p>
-                              <p className="text-[10px] text-slate-500 font-mono mt-1">{format(new Date(n.timestamp), 'p')} · {n.item}</p>
-                            </div>
-                          </div>
+
+                    {notifications.length > 0 && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-bold flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-rose-400" />
+                            Bot Alerts (Missing Items)
+                          </h4>
                           <button 
-                            onClick={() => {
-                              setView('whatsapp');
-                              setNewProduct({ name: n.item, description: '', price: '' });
-                              setShowProductForm(true);
-                            }}
-                            className="px-6 py-3 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold opacity-0 group-hover:opacity-100 transition-all shadow-xl hover:scale-105 active:scale-95"
+                            onClick={() => setNotifications([])}
+                            className="text-[10px] uppercase font-bold text-slate-500 hover:text-rose-400 underline"
                           >
-                            Add Rate List
+                            Clear All
                           </button>
                         </div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {notifications.map((n) => (
+                            <div key={n.id} className="glass p-5 rounded-2xl border-rose-500/20 bg-rose-500/5 flex justify-between items-center group shadow-lg">
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-rose-400 shadow-inner">
+                                  <ShoppingBag className="w-6 h-6" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-slate-200">{n.message}</p>
+                                  <p className="text-[10px] text-slate-500 font-mono mt-1">{safeFormat(n.timestamp, 'p')} · {n.item}</p>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  setView('whatsapp');
+                                  setNewProduct({ name: n.item, description: '', price: '' });
+                                  setShowProductForm(true);
+                                }}
+                                className="px-6 py-3 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold opacity-0 group-hover:opacity-100 transition-all shadow-xl hover:scale-105 active:scale-95"
+                              >
+                                Add Rate List
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <h4 className="text-lg font-bold">Product Inventory (Rate List)</h4>
+                        <p className="text-xs text-slate-500">Add prices here so AI can answer customers on WhatsApp</p>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setEditingProduct(null);
+                          setNewProduct({ name: '', description: '', price: '' });
+                          setShowProductForm(!showProductForm);
+                        }}
+                        className="p-3 bg-emerald-500 text-slate-950 rounded-xl font-bold flex items-center gap-2 text-sm hover:scale-105 transition-all shadow-lg"
+                      >
+                        <Plus className="w-4 h-4" /> {showProductForm ? 'Cancel' : 'Add New Item'}
+                      </button>
+                    </div>
+
+                    {showProductForm && (
+                      <div className="glass p-6 rounded-2xl space-y-4 border-emerald-500/20 bg-emerald-500/10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-2xl rounded-full"></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Product Name</label>
+                            <input 
+                              type="text" 
+                              placeholder="e.g. Sugar / Chini" 
+                              className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
+                              value={newProduct.name}
+                              onChange={e => setNewProduct({...newProduct, name: e.target.value})}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Price (Rs.)</label>
+                            <input 
+                              type="number" 
+                              placeholder="0.00" 
+                              className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
+                              value={newProduct.price}
+                              onChange={e => setNewProduct({...newProduct, price: e.target.value})}
+                            />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Details / Info</label>
+                            <textarea 
+                              placeholder="Rate per kg, or special discounts etc." 
+                              className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10 h-24 resize-none"
+                              value={newProduct.description}
+                              onChange={e => setNewProduct({...newProduct, description: e.target.value})}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                          <button 
+                            onClick={() => {
+                              setShowProductForm(false);
+                              setEditingProduct(null);
+                            }} 
+                            className="px-5 py-2 text-xs font-bold text-slate-400"
+                          >
+                            Cancel
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (!newProduct.name || !newProduct.price) return;
+                              if (editingProduct) {
+                                setProducts(products.map(p => p.id === editingProduct.id ? { ...p, ...newProduct } : p));
+                                setEditingProduct(null);
+                              } else {
+                                setProducts([...products, { ...newProduct, id: Date.now() }]);
+                              }
+                              setNewProduct({ name: '', description: '', price: '' });
+                              setShowProductForm(false);
+                            }}
+                            className="px-8 py-2 bg-emerald-500 text-slate-950 rounded-lg text-sm font-bold shadow-lg active:scale-95"
+                          >
+                            {editingProduct ? 'Update Price' : 'Add to List'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-12 gap-4 px-4 text-[10px] uppercase font-bold text-slate-600 font-mono tracking-widest">
+                        <div className="col-span-8">Product / Description</div>
+                        <div className="col-span-4 text-right">Price (PKR)</div>
+                      </div>
+                      {products.map(p => (
+                        <div key={p.id} className="glass p-5 rounded-2xl flex flex-col gap-2 group hover:bg-white/5 transition-all border-white/5">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                                <ShoppingBag className="w-5 h-5 text-emerald-400" />
+                              </div>
+                              <p className="font-bold text-lg">{p.name}</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <p className="font-mono font-bold text-emerald-400 text-xl tracking-tighter">Rs. {p.price}</p>
+                              <button 
+                                onClick={() => {
+                                  setEditingProduct(p);
+                                  setNewProduct({ name: p.name, description: p.description, price: p.price });
+                                  setShowProductForm(true);
+                                }}
+                                className="p-2 opacity-0 group-hover:opacity-100 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
+                                title="Edit Price"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => setProducts(products.filter(item => item.id !== p.id))}
+                                className="p-2 opacity-0 group-hover:opacity-100 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
+                                title="Delete"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="pl-14">
+                            <p className="text-sm text-slate-400 leading-relaxed italic">{p.description || 'No detailed description added.'}</p>
+                          </div>
+                        </div>
                       ))}
+                      {products.length === 0 && !showProductForm && (
+                        <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2rem]">
+                          <ShoppingBag className="w-12 h-12 text-slate-800 mx-auto mb-4" />
+                          <p className="text-slate-500 italic">"Koi product nahi mila. Aap yahan product list bana saktay hain taki COB WhatsApp par jawab de sakay."</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
             )}
 
-            {view === 'whatsapp' && (
-              <div className="p-8 space-y-6">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h4 className="text-lg font-bold">Product Inventory (Rate List)</h4>
-                    <p className="text-xs text-slate-500">Add prices here so AI can answer customers on WhatsApp</p>
+            {view === 'store' && (
+              <div className="p-8 space-y-8">
+                <div className="flex flex-col items-center text-center mb-8">
+                  <div className="w-20 h-20 bg-amber-500/20 text-amber-500 rounded-3xl flex items-center justify-center mb-4 shadow-2xl">
+                    <IndianRupee className="w-10 h-10" />
                   </div>
-                  <button 
-                    onClick={() => {
-                      setEditingProduct(null);
-                      setNewProduct({ name: '', description: '', price: '' });
-                      setShowProductForm(!showProductForm);
-                    }}
-                    className="p-3 bg-emerald-500 text-slate-950 rounded-xl font-bold flex items-center gap-2 text-sm hover:scale-105 transition-all shadow-lg"
-                  >
-                    <Plus className="w-4 h-4" /> {showProductForm ? 'Cancel' : 'Add New Item'}
-                  </button>
+                  <h3 className="text-3xl font-bold">COB Store</h3>
+                  <p className="text-slate-400 mt-2 max-w-md">Use your COB Coins to grow your business into an empire!</p>
+                  <div className="mt-4 px-6 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 font-bold">
+                    Balance: {coins} Coins
+                  </div>
                 </div>
 
-                {showProductForm && (
-                  <div className="glass p-6 rounded-2xl space-y-4 border-emerald-500/20 bg-emerald-500/10 shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-2xl rounded-full"></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Product Name</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. Sugar / Chini" 
-                          className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
-                          value={newProduct.name}
-                          onChange={e => setNewProduct({...newProduct, name: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Price (Rs.)</label>
-                        <input 
-                          type="number" 
-                          placeholder="0.00" 
-                          className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
-                          value={newProduct.price}
-                          onChange={e => setNewProduct({...newProduct, price: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-1 md:col-span-2">
-                        <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Details / Info</label>
-                        <textarea 
-                          placeholder="Rate per kg, or special discounts etc." 
-                          className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10 h-24 resize-none"
-                          value={newProduct.description}
-                          onChange={e => setNewProduct({...newProduct, description: e.target.value})}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-3">
-                      <button 
-                        onClick={() => {
-                          setShowProductForm(false);
-                          setEditingProduct(null);
-                        }} 
-                        className="px-5 py-2 text-xs font-bold text-slate-400"
-                      >
-                        Cancel
-                      </button>
-                      <button 
-                        onClick={saveProduct}
-                        className="px-8 py-2 bg-emerald-500 text-slate-950 rounded-lg text-sm font-bold shadow-lg active:scale-95"
-                      >
-                        {editingProduct ? 'Update Price' : 'Add to List'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div className="grid grid-cols-12 gap-4 px-4 text-[10px] uppercase font-bold text-slate-600 font-mono tracking-widest">
-                    <div className="col-span-8">Product / Description</div>
-                    <div className="col-span-4 text-right">Price (PKR)</div>
-                  </div>
-                  {products.map(p => (
-                    <div key={p.id} className="glass p-5 rounded-2xl flex flex-col gap-2 group hover:bg-white/5 transition-all border-white/5">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
-                            <ShoppingBag className="w-5 h-5 text-emerald-400" />
-                          </div>
-                          <p className="font-bold text-lg">{p.name}</p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <p className="font-mono font-bold text-emerald-400 text-xl tracking-tighter">Rs. {p.price}</p>
-                          <button 
-                            onClick={() => startEdit(p)}
-                            className="p-2 opacity-0 group-hover:opacity-100 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
-                            title="Edit Price"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => setProducts(products.filter(item => item.id !== p.id))}
-                            className="p-2 opacity-0 group-hover:opacity-100 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
-                            title="Delete"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="pl-14">
-                        <p className="text-sm text-slate-400 leading-relaxed italic">{p.description || 'No detailed description added.'}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {products.length === 0 && !showProductForm && (
-                   <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2rem]">
-                      <ShoppingBag className="w-12 h-12 text-slate-800 mx-auto mb-4" />
-                      <p className="text-slate-500 italic">"Koi product nahi mila. Aap yahan product list bana saktay hain taki COB WhatsApp par jawab de sakay."</p>
-                    </div>
-                  )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <StoreItem 
+                    title="Medium Shop Expansion"
+                    description="Expand your shop with more inventory space and faster COB processing."
+                    cost={1000}
+                    disabled={shopSize !== 'Small'}
+                    purchased={shopSize === 'Medium' || shopSize === 'Large' || shopSize === 'Palatial'}
+                    onBuy={() => {
+                      if (coins >= 1000) {
+                        setCoins(prev => prev - 1000);
+                        setShopSize('Medium');
+                        speak("Mubarak ho! Aapki dukan ab Medium ho gayi hai.");
+                      }
+                    }}
+                  />
+                  <StoreItem 
+                    title="Large Inventory Hub"
+                    description="Access advanced data insights and manage up to 500 products."
+                    cost={2500}
+                    disabled={shopSize !== 'Medium'}
+                    purchased={shopSize === 'Large' || shopSize === 'Palatial'}
+                    onBuy={() => {
+                      if (coins >= 2500) {
+                        setCoins(prev => prev - 2500);
+                        setShopSize('Large');
+                        speak("Aapki dukan ab bare level par aa gayi hai. Large Shop unlocked!");
+                      }
+                    }}
+                  />
+                   <StoreItem 
+                    title="AI WhatsApp Pro"
+                    description="Let AI handle multiple customers on WhatsApp at once."
+                    cost={0}
+                    purchased={true}
+                    onBuy={() => {}}
+                  />
                 </div>
               </div>
             )}
@@ -1080,7 +1379,7 @@ function TransactionRow({ t, context }: any) {
   }
 
   return (
-    <div className="p-5 glass rounded-2xl flex items-center justify-between hover:bg-white/5 transition-all border-none mb-2 group cursor-pointer">
+    <div className="p-5 glass rounded-2xl flex items-center justify-between hover:bg-white/5 transition-all border-none mb-2 group cursor-pointer relative overflow-hidden">
       <div className="flex items-center gap-4">
         <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-inner ${colorStyle}`}>
           <TypeIcon className="w-6 h-6" />
@@ -1095,26 +1394,80 @@ function TransactionRow({ t, context }: any) {
             )}
           </div>
           <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider mt-1">
-            {t.timestamp?.seconds ? format(new Date(t.timestamp.seconds * 1000), 'p, MMM d') : 'Just now'}
+            {t.timestamp?.seconds ? safeFormat(new Date(t.timestamp.seconds * 1000), 'p, MMM d') : 'Just now'}
           </p>
         </div>
       </div>
-      <div className="text-right">
-        <p className={`text-xl font-bold font-mono tracking-tighter ${
-          (currentSign === '+' || t.type === 'income' || (t.type === 'payment' && !isDebtContext)) ? 'text-emerald-400' : 'text-rose-400'
-        }`}>
-          {currentSign}Rs. {displayAmount.toLocaleString()}
-        </p>
-        <div className="flex items-center gap-2 mt-1">
-          <div className={`text-[8px] uppercase font-bold tracking-widest opacity-60 flex items-center gap-1 ${
-            t.type === 'payment' ? 'text-emerald-400' : 
-            t.type === 'debt' ? 'text-rose-400' : ''
+      <div className="flex items-center gap-6">
+        <div className="text-right">
+          <p className={`text-xl font-bold font-mono tracking-tighter ${
+            (currentSign === '+' || t.type === 'income' || (t.type === 'payment' && !isDebtContext)) ? 'text-emerald-400' : 'text-rose-400'
           }`}>
-            {typeLabel}
+            {currentSign}Rs. {displayAmount.toLocaleString()}
+          </p>
+          <div className="flex justify-end gap-2 mt-1">
+            <div className={`text-[8px] uppercase font-bold tracking-widest opacity-60 flex items-center gap-1 ${
+              t.type === 'payment' ? 'text-emerald-400' : 
+              t.type === 'debt' ? 'text-rose-400' : ''
+            }`}>
+              {typeLabel}
+            </div>
           </div>
-          {/* Removed MoreHorizontal button as per user request */}
         </div>
+        
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            const text = `COB Business Bill:
+Item: ${t.description}
+Price: Rs. ${t.amount}
+Date: ${t.timestamp?.seconds ? safeFormat(new Date(t.timestamp.seconds * 1000), 'p, MMM d') : 'Ajj'}
+Shukriya!`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+          }}
+          className="p-3 bg-white/5 hover:bg-emerald-500 hover:text-slate-950 rounded-xl transition-all shadow-lg active:scale-95 group/wa"
+          title="Share via WhatsApp"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
       </div>
+    </div>
+  );
+}
+
+function StoreItem({ title, description, cost, onBuy, disabled, purchased }: any) {
+  return (
+    <div className={`p-6 glass rounded-[2rem] border transition-all relative overflow-hidden ${
+      purchased ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-white/5 hover:border-amber-500/30'
+    }`}>
+      {purchased && (
+        <div className="absolute top-0 right-0 px-4 py-1 bg-emerald-500 text-slate-950 text-[8px] font-bold uppercase tracking-widest rounded-bl-xl">
+          Purchased
+        </div>
+      )}
+      <div className="flex justify-between items-start mb-4">
+        <h4 className="font-bold text-lg">{title}</h4>
+        {!purchased && (
+          <div className="flex items-center gap-1 text-amber-500 font-mono font-bold text-sm">
+            <IndianRupee className="w-3 h-3" /> {cost}
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-slate-400 leading-relaxed mb-6 italic">{description}</p>
+      
+      {!purchased && (
+        <button 
+          disabled={disabled}
+          onClick={onBuy}
+          className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${
+            disabled 
+              ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
+              : 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 hover:scale-105 active:scale-95'
+          }`}
+        >
+          {disabled ? 'LOCKED' : 'Buy Upgrade'}
+        </button>
+      )}
     </div>
   );
 }
@@ -1122,7 +1475,7 @@ function TransactionRow({ t, context }: any) {
 function DayCard({ day }: { day: any }) {
   const [isOpen, setIsOpen] = useState(false);
   
-  const dailyEarnings = day.items
+  const dailyEarnings = (day.items || [])
     .filter((t: any) => t.type === 'income' || t.type === 'payment')
     .reduce((acc: number, t: any) => acc + (t.amount || 0), 0);
     
@@ -1172,7 +1525,7 @@ function DayCard({ day }: { day: any }) {
   );
 }
 
-function NavItem({ icon: Icon, label, active, onClick }: any) {
+function NavItem({ icon: Icon, label, active, onClick, iconColor }: any) {
   return (
     <button
       onClick={onClick}
@@ -1182,7 +1535,7 @@ function NavItem({ icon: Icon, label, active, onClick }: any) {
           : 'text-slate-400 hover:bg-white/5'
       }`}
     >
-      <Icon className="w-5 h-5 flex-shrink-0" />
+      <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-slate-950' : (iconColor || 'text-emerald-400/50')}`} />
       {label}
     </button>
   );

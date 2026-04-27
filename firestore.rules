@@ -23,7 +23,7 @@ service cloud.firestore {
     function isValidTransaction(data) {
       return data.keys().hasAll(['amount', 'type', 'timestamp']) &&
              data.amount is number && data.amount >= 0 &&
-             data.type in ['income', 'expense', 'debt'] &&
+             data.type in ['income', 'expense', 'debt', 'payment'] &&
              data.timestamp == request.time &&
              (data.get('description', '') is string && data.get('description', '').size() <= 1000) &&
              (data.get('rawInput', '') is string && data.get('rawInput', '').size() <= 2000);

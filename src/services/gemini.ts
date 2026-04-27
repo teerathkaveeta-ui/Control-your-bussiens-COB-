@@ -4,61 +4,71 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const parseBusinessInput = async (input: string) => {
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-1.5-flash",
     contents: `You are an AI business partner named COB. 
     Analyze the following input from a shopkeeper. 
     The shopkeeper can either be RECORDING something (income, expense, debt) or ASKING A QUESTION about their business history.
     
+    Urdu/Roman Urdu Phrase Mapping:
+    - "Kamai" = income
+    - "Kharcha" = expense
+    - "Udhaar" / "Udhari" / "Baqi" = debt
+    - "Jama" / "Paisa mil gaya" / "Wapsi" = payment
+    - "Dukan ki itni kamai" -> income
+    - "Aaj itna kharcha hua" -> expense
+    - "Itni udhari likh lo" -> debt
+    
     STRICT RULE: If the user says a single number like "100", "₹500", or "sau rupee", treat it as an RECORDING of "income" with description "Sale".
+    
+    STRICT RULE: If the user says something like "Kamai 500", "500 kamai", "Kharcha 200", "200 kharcha", "Udhari 100", "100 udhari", treat these as CLEAR RECORDINGS.
+    
+    STRICT RULE: The user might record MULTIPLE things in one go. You MUST return an array of actions.
 
     Input: "${input}"
 
     Rules:
-    1. If the user is recording a transaction:
-       - Return a JSON object with: { intent: "record", data: { amount, type, description, customerName } }
+    1. If the user is recording transactions:
+       - Return a JSON object with: { intent: "record", actions: [ { amount, type, description, customerName }, ... ] }
        - type must be "income", "expense", "debt", or "payment".
-       - "payment" (Jama) is when a CUSTOMER GIVES YOU money they owed. Phrases: "paisay mil gaye", "udhar wapis kiya", "Ahmed ne 200 diye" (if its from a borrower).
-       - "debt" (Udhaar) is when YOU GIVE items/money to a customer on credit. Phrases: "udhar diya", "khata me likh lo", "Ahmed ko 200 ki cheez di".
-       - "income" (Kamai) is general sales.
-       - "expense" (Kharcha) is shop expenses (e.g., buying stock, paying electric bill).
-       - EXAMPLE: "₹100" -> { "intent": "record", "data": { "amount": 100, "type": "income", "description": "Sale" } }
+       - "payment" (Jama) is when a CUSTOMER GIVES YOU money they owed. Phrases: "paisay mil gaye", "udhar wapis kiya", "Jama karlo", "Ahmed ne 200 diye" (if its from a borrower).
+       - "debt" (Udhaar/Udhari/Baqiya) is when YOU GIVE items/money to a customer on credit. Phrases: "udhar diya", "khata me likh lo", "Ahmed ko 200 ki cheez di", "Itni udhari", "100 udhari".
+       - "income" (Kamai/Sale) is general sales. Phrases: "itni kamai", "itne ki sell hui", "Kamai 500".
+       - "expense" (Kharcha) is shop expenses (e.g., buying stock, paying electric bill). Phrases: "itna kharcha hua", "bijli ka bill diya", "200 kharcha".
+       - EXAMPLE: "Ahmed ne 100 diye aur Sahil ko 50 ki cheeni di" -> { "intent": "record", "actions": [ { "amount": 100, "type": "payment", "customerName": "Ahmed", "description": "Payment (Ahmed)" }, { "amount": 50, "type": "debt", "customerName": "Sahil", "description": "Sugar (Sahil)" } ] }
+       - EXAMPLE: "500 kamai likho" -> { "intent": "record", "actions": [ { "amount": 500, "type": "income", "description": "Sale" } ] }
+       - EXAMPLE: "Kamai five hundred" -> { "intent": "record", "actions": [ { "amount": 500, "type": "income", "description": "Sale" } ] }
+       - EXAMPLE: "two hundred kharcha" -> { "intent": "record", "actions": [ { "amount": 200, "type": "expense", "description": "Shop Expense" } ] }
+       - EXAMPLE: "Sajid ki udhari 1000" -> { "intent": "record", "actions": [ { "amount": 1000, "type": "debt", "customerName": "Sajid", "description": "Udhaar (Sajid)" } ] }
        - IMPORTANT: If the user just says a number or "₹100" without context, default to type "income" and description "Sale".
-       - IMPORTANT: If the user says they "returned goods" or "received a refund" for an expense (e.g., "5000 ka maal wapis kar diya"), use type "expense" but make the amount NEGATIVE (e.g., amount: -5000).
-       - IMPORTANT: If a customer returns a sale (refund), use type "income" but make the amount NEGATIVE.
        - IMPORTANT: For "debt" or "payment", ALWAYS include the customer's name in the description field like "Item Name (Customer Name)". 
-         Example: "Biscuit (Sahil)" or "Udhar Wapsi (Ahmed)".
-       - IMPORTANT: Only set "amount" if the user EXPLICITLY mentions a number. 
        - If the user says "clear the debt" or "hisab clear kar do" without a number, return amount: -1.
     2. If the user is asking a question (e.g., "Ahmed ka udhar kitna hai?"):
        - Return a JSON object with: { intent: "query", question: "The summarized question" }
 
     Rule: Focus strictly on business context (buying/selling/debt). 
-    If you hear something that sounds like "Gheyo" or "Ghee", it's a product.
-    If you hear "wapis diye" or "paisa mil gaya" from a borrower, it's a "payment".
+    
+    SPECIAL CASE: If a user says someone "took items and didn't pay" or "left without paying" (Le ke chala gaya, paisay nahi diye), that is a DEBT transaction.
     
     Examples:
-    - "Ahmed ne 200 rupay wapis kiye" -> { "intent": "record", "data": { "amount": 200, "type": "payment", "customerName": "Ahmed", "description": "Udhar Wapsi (Ahmed)" } }
-    - "Ahmed ne 200 diye" -> { "intent": "record", "data": { "amount": 200, "type": "payment", "customerName": "Ahmed", "description": "Payment (Ahmed)" } }
-    - "Ahmed ne saara udhaar wapis kar diya" -> { "intent": "record", "data": { "amount": -1, "type": "payment", "customerName": "Ahmed", "description": "Settlement (Ahmed)" } }
-    - "Ahmed ko 200 ki cheeni udhar di" -> { "intent": "record", "data": { "amount": 200, "type": "debt", "customerName": "Ahmed", "description": "Sugar (Ahmed)" } }
-    - "Sahil ne 50 ka biscuit liya udhar" -> { "intent": "record", "data": { "amount": 50, "type": "debt", "customerName": "Sahil", "description": "Biscuit (Sahil)" } }
-    - "Gheyo ke 500 diye" -> { "intent": "record", "data": { "amount": 500, "type": "expense", "description": "Ghee (Gheyo)" } }
-    - "Ajj 500 ki kamai hui" -> { "intent": "record", "data": { "amount": 500, "type": "income", "description": "Daily Kamai" } }
-    - "Ahmed ka udhaar kitna hai?" -> { "intent": "query", "question": "Ahmed ka udhaar kitna hai?" }
-    - "Kal kitni kamai hui thi?" -> { "intent": "query", "question": "Kal kitni kamai hui thi?" }`,
+    - "Ahmed ne 200 rupay wapis kiye" -> { "intent": "record", "actions": [ { "amount": 200, "type": "payment", "customerName": "Ahmed", "description": "Udhar Wapsi (Ahmed)" } ] }
+    - "Usne 50 ki cheeni li par paisay nahi diye" -> { "intent": "record", "actions": [ { "amount": 50, "type": "debt", "description": "Sugar (Baqi)" } ] }
+    - "Ahmed ka udhaar kitna hai?" -> { "intent": "query", "question": "Ahmed ka udhaar kitna hai?" }`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
           intent: { type: Type.STRING, enum: ["record", "query"] },
-          data: {
-            type: Type.OBJECT,
-            properties: {
-              amount: { type: Type.NUMBER, description: "The amount recorded. Use -1 if full clearing of debt is requested without a value." },
-              type: { type: Type.STRING, enum: ["income", "expense", "debt", "payment"] },
-              description: { type: Type.STRING },
-              customerName: { type: Type.STRING, nullable: true }
+          actions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                amount: { type: Type.NUMBER },
+                type: { type: Type.STRING, enum: ["income", "expense", "debt", "payment"] },
+                description: { type: Type.STRING },
+                customerName: { type: Type.STRING, nullable: true }
+              }
             }
           },
           question: { type: Type.STRING }
@@ -77,7 +87,7 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     : "No product rate list available.";
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-1.5-flash",
     contents: `You are a helpful business assistant named COB (Control Our Business) for a shopkeeper in Pakistan. 
     STRRICT RULE: Always respond in Roman Urdu only (e.g., "Ahmed ka udhar 200 rupay hai"). 
     Do NOT use English for the answer except for names/numbers.
