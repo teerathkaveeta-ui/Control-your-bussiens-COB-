@@ -88,8 +88,8 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     1. If the user asks to "Increase shop size" or "Upgrade shop" (Dukan bari karni hai):
        - If current coins are >= 1000: Reply that it's done and append "UPGRADE_SUCCESS" at the END of your Urdu response.
        - If current coins are < 1000: Reply that they need more coins (e.g., "Sain, upgrade ke liye 1000 coins chahiye, abhi sirf ${coins} hain.").
-    2. If the user asks to "Watch Ad" or "Get coins" (Ad dekho, coins chahiye):
-       - Reply that the ad is watched and they got 100 coins. Append "AD_WATCHED" at the END of your Urdu response.
+    2. If the user asks about "Watch Ad" or "Get coins" (Ad dekho, coins chahiye):
+       - Politely explain that ads are currently disabled to provide a better experience for the shopkeeper.
     3. If asked "Do I have enough coins?" (Kya coins kafi hain?):
        - Tell them their current balance and how much needed for upgrade (1000).
 
