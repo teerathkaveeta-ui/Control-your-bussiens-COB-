@@ -1,0 +1,12 @@
+{
+  "name": "Control Your Business (COB)",
+  "description": "An AI-powered business management app for shopkeepers. Features voice-to-text record keeping, debt tracking (udhari), and AI business memory using Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "AI Business Processing",
+    "Voice Recognition",
+    "Debt Management"
+  ]
+}

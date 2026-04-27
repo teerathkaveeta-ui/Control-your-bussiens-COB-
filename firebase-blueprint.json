@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Represents a business financial record (income, expense, or debt).",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number", "description": "The amount of money involved." },
+        "type": { "type": "string", "enum": ["income", "expense", "debt"], "description": "The type of transaction." },
+        "category": { "type": "string", "description": "e.g., Sales, Inventory, Rent, etc." },
+        "description": { "type": "string", "description": "Details of the transaction." },
+        "customerId": { "type": "string", "description": "Optional link to a customer (for debts)." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the transaction occurred." },
+        "rawInput": { "type": "string", "description": "The transcription of the voice input that created this record." }
+      },
+      "required": ["amount", "type", "timestamp"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A person who does business with the shop.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the customer." },
+        "phone": { "type": "string", "description": "WhatsApp or phone number." },
+        "totalDebt": { "type": "number", "description": "Current balance owed by the customer." }
+      },
+      "required": ["name"]
+    },
+    "BusinessMemory": {
+      "title": "Business Memory",
+      "description": "AI-generated summaries or notes about the business state.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "The memory content or summary." },
+        "date": { "type": "string", "format": "date", "description": "The date this summary refers to." },
+        "type": { "type": "string", "enum": ["daily_summary", "critical_alert", "general_note"] }
+      },
+      "required": ["content", "date", "type"]
+    }
+  },
+  "firestore": {
+    "/businesses/{businessId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "List of all financial transactions for a business."
+    },
+    "/businesses/{businessId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "List of customers and their credit status."
+    },
+    "/businesses/{businessId}/memories/{memoryId}": {
+      "schema": "BusinessMemory",
+      "description": "AI's long-term memory about the business."
+    }
+  }
+}
