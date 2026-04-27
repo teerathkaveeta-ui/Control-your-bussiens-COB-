@@ -9,25 +9,24 @@ export const parseBusinessInput = async (input: string) => {
     Analyze the following input from a shopkeeper. 
     The shopkeeper can either be RECORDING something (income, expense, debt) or ASKING A QUESTION about their business history.
     
-    Urdu/Roman Urdu Phrase Mapping:
-    - "Kamai" / "Sale" / "کمائی" = income
-    - "Kharcha" / "Expense" / "خرچہ" = expense
-    - "Udhaar" / "Udhari" / "Baqi" / "ادھار" = debt
-    - "Jama" / "Paisa mil gaya" / "Wapsi" / "جمع" = payment
-    - "Dukan ki itni kamai" -> income
-    - "Aaj itna kharcha hua" -> expense
-    - "Itni udhari likh lo" -> debt
+    SUPPORTED LANGUAGES: 
+    - The user can speak in ROMAN URDU, URDU (script), HINDI, ENGLISH, or any mix of these (e.g., "Mera five hundred ka kharcha hua", "100 rupees income").
+    - DO NOT assume pure Urdu. Understand the INTENT regardless of the language or dialect used.
     
-    SUPPORTED NUMBER FORMATS (Detect accurately):
-    - Digits: 100, 500, 1000
-    - Roman Urdu: "sou" or "sau" (100), "pachas" (50), "hazar" (1000), "das" (10), "bees" (20), "tees" (30), "chalis" (40), "saath" (60), "sattar" (70), "assi" (80), "navve" (90).
-    - Urdu scripts: "سو", "پچاس", "ہزار"
+    Category Mapping:
+    - INCOME (Sale/Kamai/Jama/Kamai/Sale): Money coming in from sales.
+    - EXPENSE (Kharcha/Expense/Lagat/Kharch): Money paid out for supplies, bills, etc.
+    - DEBT (Udhaar/Udhari/Baqi/Baqiya/Credit): Items/money given to a customer on credit (customer owes you).
+    - PAYMENT (Udhar Wapsi/Jama/Paisa mil gaya/Payment): When a customer pays back their existing debt.
     
-    STRICT RULE: If the user says a single number like "100", "₹500", "sau rupee", or "سو روپے", treat it as an RECORDING of "income" with description "Sale".
+    NUMBER DETECTION:
+    - Support digits (100, 500) and written numbers in English (five hundred, thousand), Roman Urdu (sau, hazaar, bees), or Urdu script (سو, ہزار).
     
-    STRICT RULE: If the user says something like "Kamai 500", "500 kamai", "Kharcha 200", "200 kharcha", "Udhari 100", "100 udhari", treat these as CLEAR RECORDINGS.
+    STRICT RULE: If the user says a single number like "100", "₹500", or "five hundred", treat it as an RECORDING of "income" with description "Sale".
     
     STRICT RULE: The user might record MULTIPLE things in one go. You MUST return an array of actions.
+    
+    STRICT RULE: If the user says "clear the debt" or "hisab khatam kar do" for a person, return amount: -1 for that customer.
 
     Input: "${input}"
 
@@ -35,21 +34,13 @@ export const parseBusinessInput = async (input: string) => {
     1. If the user is recording transactions:
        - Return a JSON object with: { intent: "record", actions: [ { amount, type, description, customerName }, ... ] }
        - type must be "income", "expense", "debt", or "payment".
-       - "payment" (Jama) is when a CUSTOMER GIVES YOU money they owed. Phrases: "paisay mil gaye", "udhar wapis kiya", "Jama karlo", "Ahmed ne 200 diye" (if its from a borrower).
-       - "debt" (Udhaar/Udhari/Baqiya) is when YOU GIVE items/money to a customer on credit. Phrases: "udhar diya", "khata me likh lo", "Ahmed ko 200 ki cheez di", "Itni udhari", "100 udhari".
-       - "income" (Kamai/Sale) is general sales. Phrases: "itni kamai", "itne ki sell hui", "Kamai 500".
-       - "expense" (Kharcha) is shop expenses (e.g., buying stock, paying electric bill). Phrases: "itna kharcha hua", "bijli ka bill diya", "200 kharcha".
-       - EXAMPLE: "Ahmed ne 100 diye aur Sahil ko 50 ki cheeni di" -> { "intent": "record", "actions": [ { "amount": 100, "type": "payment", "customerName": "Ahmed", "description": "Payment (Ahmed)" }, { "amount": 50, "type": "debt", "customerName": "Sahil", "description": "Sugar (Sahil)" } ] }
-       - EXAMPLE: "500 kamai likho" -> { "intent": "record", "actions": [ { "amount": 500, "type": "income", "description": "Sale" } ] }
-       - EXAMPLE: "Kamai five hundred" -> { "intent": "record", "actions": [ { "amount": 500, "type": "income", "description": "Sale" } ] }
-       - EXAMPLE: "two hundred kharcha" -> { "intent": "record", "actions": [ { "amount": 200, "type": "expense", "description": "Shop Expense" } ] }
-       - EXAMPLE: "Sajid ki udhari 1000" -> { "intent": "record", "actions": [ { "amount": 1000, "type": "debt", "customerName": "Sajid", "description": "Udhaar (Sajid)" } ] }
-       - IMPORTANT: If the user just says a number or "₹100" without context, default to type "income" and description "Sale".
+       - EXAMPLE (Mixed Language): "Ahmed ne 100 diye and Sahil took sugar on credit worth 50" -> { "intent": "record", "actions": [ { "amount": 100, "type": "payment", "customerName": "Ahmed", "description": "Payment (Ahmed)" }, { "amount": 50, "type": "debt", "customerName": "Sahil", "description": "Sugar (Sahil)" } ] }
+       - EXAMPLE (English): "Income five hundred" -> { "intent": "record", "actions": [ { "amount": 500, "type": "income", "description": "Sale" } ] }
+       - EXAMPLE (Plain Number): "500" -> { "intent": "record", "actions": [ { "amount": 500, "type": "income", "description": "Sale" } ] }
        - IMPORTANT: For "debt" or "payment", ALWAYS include the customer's name in the description field like "Item Name (Customer Name)". 
-       - If the user says "clear the debt" or "hisab clear kar do" without a number, return amount: -1.
-    2. If the user is asking a question (e.g., "Ahmed ka udhar kitna hai?"):
-       - Return a JSON object with: { intent: "query", question: "The summarized question" }
-
+    2. If the user is asking a question:
+       - Return a JSON object with: { intent: "query", question: "Summarized question" }
+    
     Rule: Focus strictly on business context (buying/selling/debt). 
     
     SPECIAL CASE: If a user says someone "took items and didn't pay" or "left without paying" (Le ke chala gaya, paisay nahi diye), that is a DEBT transaction.
@@ -93,10 +84,10 @@ export const answerBusinessQuestion = async (question: string, context: string, 
 
   const response = await ai.models.generateContent({
     model: "gemini-1.5-flash",
-    contents: `You are a helpful business assistant named COB (Control Our Business) for a shopkeeper in Pakistan. 
-    STRRICT RULE: Always respond in Roman Urdu only (e.g., "Ahmed ka udhar 200 rupay hai"). 
-    Do NOT use English for the answer except for names/numbers.
-    Keep the tone polite and professional.
+    contents: `You are a helpful business assistant named COB (Control Our Business). 
+    The user can speak in any language (Urdu, Hindi, English, etc). 
+    You should respond in the SAME LANGUAGE or a mix (Roman Urdu/Hindi/English is best for this user).
+    Keep the tone polite, helpful, and professional.
 
     Shop Status:
     - Current Coins: ${coins}

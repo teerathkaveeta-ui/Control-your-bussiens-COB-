@@ -10,6 +10,7 @@ import {
 } from './services/firebase';
 import { parseBusinessInput, answerBusinessQuestion } from './services/gemini';
 import VoiceRecorder from './components/VoiceRecorder';
+import { SplashScreen } from '@capacitor/splash-screen';
 import { 
   BarChart3, 
   Users, 
@@ -212,6 +213,11 @@ function MainApp() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (u: any) => {
       try {
+        try {
+          await SplashScreen.hide();
+        } catch (e) {
+          console.warn("SplashScreen hide failed (probably not on device)", e);
+        }
         setUser(u);
         if (u) {
           const shopData = await getShopData();
@@ -437,7 +443,7 @@ function MainApp() {
           setAiResponse(finalMsg);
           speak(finalMsg);
         } else {
-          const failMsg = `Sain! COB ko "${transcript}" mein amount samajh nahi aaya. '100 rupay kamai' aise bole.`;
+          const failMsg = `Sain! COB ko "${transcript}" samajh nahi aaya. Amount aur type (Sale/Kharcha/Udhar) saaf boliye.`;
           setAiResponse(failMsg);
           speak(failMsg);
         }
@@ -753,13 +759,6 @@ function MainApp() {
                   >
                     Stuck? Cancel Processing
                   </button>
-                </div>
-              )}
-
-              {lastTranscript && (
-                <div className="mt-4 px-4 py-2 bg-white/5 rounded-xl border border-white/10 animate-fade-in max-w-md text-center">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">COB ne suna:</p>
-                  <p className="text-sm text-emerald-400 font-medium italic">"{lastTranscript}"</p>
                 </div>
               )}
 

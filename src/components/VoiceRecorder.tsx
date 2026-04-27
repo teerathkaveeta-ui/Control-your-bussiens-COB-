@@ -18,56 +18,49 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
     onTranscriptRef.current = onTranscript;
   }, [onTranscript]);
 
-  const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
-  const [interimTranscript, setInterimTranscript] = useState('');
   const accumulatedRef = React.useRef('');
   const interimRef = React.useRef('');
   const recognitionRef = React.useRef<any>(null);
   const isStartingRef = React.useRef(false);
 
+  // Re-initialize recognition
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setErrorMessage("Aapka browser voice support nahi karta. Google Chrome use karein.");
+      setErrorMessage("Voice support missing.");
       return;
     }
     
-    // Only initialize once
-    if (recognitionRef.current) return;
+    // Stop and clear old instance if exists
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e) {}
+      recognitionRef.current = null;
+    }
 
     const recognitionInstance = new SpeechRecognition();
     recognitionInstance.continuous = true;
     recognitionInstance.interimResults = true;
-    recognitionInstance.lang = 'ur-PK';
+    recognitionInstance.lang = 'hi-IN'; // Multilingual Hindi/Urdu/English support
 
     recognitionInstance.onstart = () => {
       isRecordingRef.current = true;
       setIsRecording(true);
       isStartingRef.current = false;
       setErrorMessage(null);
-      console.log("Speech recognition started");
+      console.log("Recognition started (hi-IN)");
     };
 
     recognitionInstance.onresult = (event: any) => {
       let final = '';
-      let interim = '';
-
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        const transcript = result[0].transcript;
         if (result.isFinal) {
-          final += transcript + ' ';
-        } else {
-          interim += transcript;
+          final += result[0].transcript + ' ';
         }
       }
-      
       if (final) {
         accumulatedRef.current += final;
-        setAccumulatedTranscript(accumulatedRef.current);
       }
-      interimRef.current = interim;
-      setInterimTranscript(interim);
     };
 
     recognitionInstance.onerror = (event: any) => {
@@ -78,25 +71,21 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       isRecordingRef.current = false;
       setIsRecording(false);
       
-      if (event.error === 'no-speech') {
-        // Just let it end naturally, don't show scary error immediately
-        console.log("No speech detected");
-      } else if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-        setErrorMessage("Mic permission blocked hai. Allow karein.");
+      if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+        setErrorMessage("Mic blocked.");
       } else {
-        setErrorMessage("Mic Masla: " + event.error);
+        setErrorMessage("Masla: " + event.error);
       }
     };
 
     recognitionInstance.onend = () => {
-      console.log("Speech recognition ended naturally.");
+      console.log("Recognition ended.");
       const wasActuallyRecording = isRecordingRef.current;
       
       setIsRecording(false);
       isRecordingRef.current = false;
       isStartingRef.current = false;
 
-      // If it ended while we were supposed to be recording, process what we have
       if (wasActuallyRecording) {
         const finalFull = (accumulatedRef.current + ' ' + interimRef.current).trim();
         if (finalFull) {
@@ -104,8 +93,6 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
         }
         accumulatedRef.current = '';
         interimRef.current = '';
-        setAccumulatedTranscript('');
-        setInterimTranscript('');
       }
     };
 
@@ -131,8 +118,6 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
           }
           accumulatedRef.current = '';
           interimRef.current = '';
-          setAccumulatedTranscript('');
-          setInterimTranscript('');
         }, 300);
       } catch (e) {
         console.error("Stop failed:", e);
@@ -145,8 +130,6 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       if (isStartingRef.current || isProcessing) return;
       
       try {
-        setAccumulatedTranscript('');
-        setInterimTranscript('');
         accumulatedRef.current = '';
         interimRef.current = '';
         setErrorMessage(null);
@@ -164,14 +147,6 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
 
   return (
     <div className="flex flex-col items-center gap-6 py-6">
-      {/* Show interim text for feedback */}
-      {(accumulatedTranscript || interimTranscript) && isRecording && (
-        <div className="glass px-6 py-3 rounded-2xl max-w-xs animate-pulse border-white/10 bg-white/5">
-          <p className="text-xs text-slate-300 italic text-center">
-            {accumulatedTranscript} <span className="opacity-50">{interimTranscript}</span>
-          </p>
-        </div>
-      )}
       <div className="relative group">
         {/* Hardware-like bezel */}
         <div className={`absolute -inset-4 rounded-full blur-xl transition-opacity duration-1000 ${
@@ -214,10 +189,10 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
 
       <div className="text-center space-y-1">
         <p className={`text-sm font-bold tracking-tight ${errorMessage ? 'text-rose-400' : 'text-white'}`}>
-          {errorMessage || (isRecording ? 'LISTENING TO URDU/ENGLISH...' : isProcessing ? 'CONVERTING TO RECORDS...' : 'TAP TO RECORD VOICE')}
+          {errorMessage || (isRecording ? 'Listening...' : isProcessing ? 'Processing Business Input...' : 'Tap for Voice Input')}
         </p>
         <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-          {isRecording ? 'Speak your sales or debts clearly' : 'Voice-First Business Logic'}
+          {isRecording ? 'Speak clearly (Sale, Expense, Debt)' : 'Multilingual Business AI'}
         </p>
       </div>
       

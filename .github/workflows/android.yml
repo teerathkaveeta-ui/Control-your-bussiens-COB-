@@ -48,8 +48,15 @@ jobs:
           npm run build
           npx cap sync android
           cd android
+          # Ensure gradlew exists to avoid common Capacitor sync issues in CI
+          if [ ! -f gradlew ]; then
+            echo "gradlew missing, generating with gradle wrapper..."
+            gradle wrapper --gradle-version 8.5
+          fi
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
+          # Locate the APK for the upload step
+          ls -R app/build/outputs/apk/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
