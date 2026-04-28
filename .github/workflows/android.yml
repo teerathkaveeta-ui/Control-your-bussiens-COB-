@@ -20,6 +20,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.5
+
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
 
@@ -41,6 +46,11 @@ jobs:
           npm run build
           npx cap sync android
           cd android
+          # Ensure Gradle wrapper exists or use system gradle
+          if [ ! -f gradlew ]; then
+            echo "gradlew missing, attempting to generate..."
+            gradle wrapper --gradle-version 8.5
+          fi
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
           mkdir -p ../dist-apk

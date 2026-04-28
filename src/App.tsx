@@ -94,22 +94,23 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
-    <div className="absolute inset-0 bg-emerald-500/20 blur-lg rounded-full animate-pulse"></div>
+    <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full animate-pulse"></div>
+    <div className="absolute inset-0 bg-emerald-400/10 blur-md rounded-full animate-ping"></div>
     <svg 
       viewBox="0 0 24 24" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
-      className="w-full h-full text-emerald-400 relative z-10"
+      className="w-full h-full text-emerald-400 relative z-10 filter drop-shadow-[0_0_12px_rgba(52,211,153,0.9)]"
     >
       <path 
-        d="M3 18L9 12L13 16L21 8" 
+        d="M3 18L7 14L11 18L21 8" 
         stroke="currentColor" 
-        strokeWidth="3" 
+        strokeWidth="3.5" 
         strokeLinecap="round" 
         strokeLinejoin="round" 
-        className="drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]"
       />
-      <circle cx="21" cy="8" r="2" fill="currentColor" />
+      <circle cx="21" cy="8" r="2.5" fill="#10b981" />
+      <circle cx="21" cy="8" r="4" stroke="currentColor" strokeWidth="1" className="animate-ping opacity-50" />
     </svg>
   </div>
 );
@@ -283,9 +284,9 @@ function MainApp() {
         animate={{ opacity: 1, y: 0 }}
         className="z-10 flex flex-col items-center"
       >
-        <div className="mb-8 p-6 glass rounded-[2.5rem] shadow-2xl relative group">
-          <Logo />
-          <div className="absolute inset-0 bg-emerald-500/10 rounded-[2.5rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        <div className="mb-8 p-10 glass rounded-[3rem] shadow-2xl relative group">
+          <Logo className="w-20 h-20" />
+          <div className="absolute inset-0 bg-emerald-500/10 rounded-[3rem] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </div>
         <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Control Your Business <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">(COB)</span></h1>
         <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light">
