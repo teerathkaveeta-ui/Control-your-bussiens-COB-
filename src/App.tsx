@@ -344,14 +344,23 @@ function MainApp() {
     setLastTranscript(transcript);
     console.log("Processing transcript:", transcript);
     
-    // Safety timeout to prevent infinite processing state
-    const timeoutDuration = 25000; 
+    // Safety timeouts for handling slow responses
+    const slowWarningTimeout = setTimeout(() => {
+      if (isProcessing) {
+        const slowMsg = "Sain! Response thora slow hai, please thora aur intezar karein ya refresh karein.";
+        setAiResponse(slowMsg);
+        speak("Response thora slow hai, thora intezar karein.");
+      }
+    }, 8000);
+
+    const timeoutDuration = 20000; 
     const processingTimeout = setTimeout(() => {
       setIsProcessing(prev => {
         if (prev) {
           console.log("Processing timed out");
-          setAiResponse("Sain! COB thora slow hai aadhay kaam k baad. Refresh karein ya dobara boliye.");
-          speak("Response slow hai. Dobara koshish karein.");
+          const finalMsg = "Sain! COB ko response milne me kafi dair ho rahi hai. Please page refresh karein ya dobara boliye.";
+          setAiResponse(finalMsg);
+          speak("Response nahi aaya. Please repeat karein ya refresh karein.");
           return false;
         }
         return prev;
@@ -498,8 +507,8 @@ function MainApp() {
       speak(errorMsg);
     } finally {
       setIsProcessing(false);
-      // Clear safety timeout just in case
       clearTimeout(processingTimeout);
+      clearTimeout(slowWarningTimeout);
     }
   };
 
