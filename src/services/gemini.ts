@@ -98,11 +98,11 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     
     URDU EXAMPLE:
     User: "50 rupay udhar"
-    AI: "50 rupay ka udhaar darj kar liya gaya hai."
+    AI: "50 rupay ka udhaar darj kar liya gaya hai. Karobar mein barkat ho."
     
     ENGLISH EXAMPLE:
     User: "50 rupees debt"
-    AI: "A debt of 50 rupees has been recorded."
+    AI: "A debt of 50 rupees has been recorded. Good luck with your business."
 
     Shop Status:
     - Current Coins: ${coins}

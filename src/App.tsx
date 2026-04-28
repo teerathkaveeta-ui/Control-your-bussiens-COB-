@@ -297,6 +297,14 @@ function MainApp() {
         console.error("Auth initialization error:", err);
       } finally {
         setLoading(false);
+        // Force splash screen to hide after UI is ready
+        setTimeout(async () => {
+          try {
+            await SplashScreen.hide();
+          } catch (e) {
+            console.error(e);
+          }
+        }, 500);
       }
     });
 
@@ -355,7 +363,7 @@ function MainApp() {
       localStorage.removeItem('lastSessionStart');
     }
 
-    const msg = newState ? "Silsila shuru. Allah barkat de!" : "Silsila khatam. Tamam record mehfooz hain.";
+    const msg = newState ? "سلسلہ شروع! اللہ آپ کے کاروبار میں برکت دے۔" : "سلسلہ ختم۔ تمام ریکارڈ محفوظ کر لیے گئے ہیں۔";
     setAiResponse(msg);
     speak(msg);
   };
@@ -390,7 +398,7 @@ function MainApp() {
   };
 
   const resetDay = async () => {
-    const confirmed = window.confirm("Kya aap naya session shuru karna chahte hain? Aaj ki sargarmian history mein mehfooz ho jayengi.");
+    const confirmed = window.confirm("کیا آپ نیا سیشن شروع کرنا چاہتے ہیں؟ آج کی تمام سرگرمیاں ہسٹری میں محفوظ ہو جائیں گی۔");
     if (!confirmed) return;
 
     const now = Date.now();
@@ -400,7 +408,7 @@ function MainApp() {
     // Clear and reload
     await loadData(user!.uid);
     
-    const msg = "Naya silsila shuru ho gaya hai. Puraana record mehfooz hai.";
+    const msg = "نیا سیشن شروع ہو گیا۔ پرانا ریکارڈ محفوظ ہے۔";
     setAiResponse(msg);
     speak(msg);
   };
