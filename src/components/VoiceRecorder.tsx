@@ -31,26 +31,26 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       return;
     }
     
-    const initRecognition = () => {
-      // Stop and clear old instance if exists
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch(e) {}
-        recognitionRef.current = null;
-      }
+      const initRecognition = () => {
+        // Stop and clear old instance if exists
+        if (recognitionRef.current) {
+          try { recognitionRef.current.stop(); } catch(e) {}
+          recognitionRef.current = null;
+        }
 
-      const recognitionInstance = new SpeechRecognition();
-      recognitionInstance.continuous = true;
-      recognitionInstance.interimResults = true;
-      
-      // We try Urdu first, then fallback to English if the browser is confused
-      recognitionInstance.lang = 'ur-PK'; 
+        const recognitionInstance = new SpeechRecognition();
+        recognitionInstance.continuous = true;
+        recognitionInstance.interimResults = true;
+        
+        // Use English for professional standard; SpeechRecognition handles multilingual well
+        recognitionInstance.lang = 'en-US'; 
 
       recognitionInstance.onstart = () => {
         isRecordingRef.current = true;
         setIsRecording(true);
         isStartingRef.current = false;
         setErrorMessage(null);
-        console.log("Mic turned on. Aap bol sakte hain.");
+        console.log("Mic turned on. Ready for input.");
       };
 
       recognitionInstance.onresult = (event: any) => {
@@ -79,15 +79,15 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
         setIsRecording(false);
         
         if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-          setErrorMessage("Mic block hai! Browser settings mein ja kar Microphone ko 'Allow' karein.");
+          setErrorMessage("Mic blocked! Please allow microphone access in browser settings.");
         } else if (event.error === 'no-speech') {
           if (!accumulatedRef.current) {
-            setErrorMessage("Aap bole nahi. Dobara koshish karein.");
+            setErrorMessage("No speech detected. Please try again.");
           }
         } else if (event.error === 'network') {
-          setErrorMessage("Internet masla hai. Please connect karein.");
+          setErrorMessage("Network error. Please check your connection.");
         } else {
-          setErrorMessage("Masla: " + event.error + ". Refresh karein.");
+          setErrorMessage("Error: " + event.error + ". Please refresh.");
         }
       };
 
@@ -150,7 +150,7 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
         isStartingRef.current = false;
         isRecordingRef.current = false;
         setIsRecording(false);
-        setErrorMessage("Mic start nahi ho raha. Refresh karein.");
+        setErrorMessage("Microphone failed to start. Please refresh.");
       }
     }
   };

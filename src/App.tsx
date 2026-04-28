@@ -61,10 +61,10 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
       return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
           <AlertCircle className="w-16 h-16 text-rose-500 mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Kuch masla ho gaya!</h1>
-          <p className="text-slate-400 mb-6 max-w-xs">App reset ho rahi hai, please thora intezar krein ya refresh karein.</p>
+          <h1 className="text-2xl font-bold text-white mb-2">Something went wrong!</h1>
+          <p className="text-slate-400 mb-6 max-w-xs">The application encountered an error. Please wait a moment or refresh the page.</p>
           <div className="flex gap-4">
-            <button onClick={() => window.location.reload()} className="bg-emerald-500 text-slate-950 px-6 py-2 rounded-xl font-bold">Refresh App</button>
+            <button onClick={() => window.location.reload()} className="bg-emerald-500 text-slate-950 px-6 py-2 rounded-xl font-bold">Refresh Page</button>
             <button 
               onClick={() => {
                 localStorage.clear();
@@ -163,7 +163,7 @@ function MainApp() {
   const refreshData = async () => {
     if (user) {
       await loadData(user.uid);
-      setAiResponse("Hisab refresh ho gaya hai.");
+      setAiResponse("Records have been refreshed.");
     }
   };
 
@@ -289,15 +289,15 @@ function MainApp() {
           <div className="absolute inset-0 bg-emerald-500/10 rounded-[3rem] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </div>
         <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Control Your Business <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">(COB)</span></h1>
-        <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light">
-          Boliye, COB yaad rakhe ga. Your AI business partner for the modern shop.
+        <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light border-l-4 border-[#275fb0] pl-6 py-2">
+          Manage your business with ease. Voice-powered AI bookkeeping for modern entrepreneurs.
         </p>
         <button 
           onClick={loginWithGoogle}
           className="flex items-center gap-3 bg-white text-slate-950 px-10 py-5 rounded-[2rem] font-bold text-lg hover:bg-emerald-50 transition-all shadow-2xl shadow-white/10 active:scale-95"
         >
           <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6" />
-          Get Started with Google
+          Sign in with Google
         </button>
       </motion.div>
     </div>
@@ -317,7 +317,7 @@ function MainApp() {
       localStorage.removeItem('lastSessionStart');
     }
 
-    const msg = newState ? "Dukan khul gayi hai. Barkat barsay!" : "Dukan barha di gayi hai. Kal milain ge.";
+    const msg = newState ? "Session started. Wishing you a profitable day!" : "Session ended. Records are securely saved.";
     setAiResponse(msg);
     speak(msg);
   };
@@ -326,7 +326,7 @@ function MainApp() {
     const now = Date.now();
     localStorage.setItem('lastSessionStart', now.toString());
     setLastSessionStart(now);
-    const msg = "Theek hai Sain, ajj ka naya hisab shuru ho chuka hai.";
+    const msg = "Understood. A new journal session has started for today.";
     setAiResponse(msg);
     speak(msg);
   };
@@ -339,19 +339,19 @@ function MainApp() {
     
     const setVoice = () => {
       const voices = window.speechSynthesis.getVoices();
-      // Look for Urdu, then Hindi, then Indian English for better accent
-      const preferredVoice = voices.find(v => v.lang.startsWith('ur')) || 
-                             voices.find(v => v.lang.startsWith('hi')) ||
+      // Use professional English voice for global standard
+      const preferredVoice = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) || 
+                             voices.find(v => v.lang.startsWith('en')) ||
                              voices.find(v => v.lang.includes('IN'));
                              
       if (preferredVoice) {
         utterance.voice = preferredVoice;
         utterance.lang = preferredVoice.lang;
       } else {
-        utterance.lang = 'en-GB';
+        utterance.lang = 'en-US';
       }
       
-      utterance.rate = 0.85; // Slightly slower for better comprehension
+      utterance.rate = 1.0; 
       utterance.pitch = 1.0;
       window.speechSynthesis.speak(utterance);
     };
@@ -381,9 +381,9 @@ function MainApp() {
     // Safety timeouts for handling slow responses
     const slowWarningTimeout = setTimeout(() => {
       if (isProcessing) {
-        const slowMsg = "Sain! Response thora slow hai, please thora aur intezar karein ya refresh karein.";
+        const slowMsg = "Processing... the request is taking longer than usual. Please stay on this page.";
         setAiResponse(slowMsg);
-        speak("Response thora slow hai, thora intezar karein.");
+        speak("Taking longer than usual, please wait.");
       }
     }, 8000);
 
@@ -392,9 +392,9 @@ function MainApp() {
       setIsProcessing(prev => {
         if (prev) {
           console.log("Processing timed out");
-          const finalMsg = "Sain! COB ko response milne me kafi dair ho rahi hai. Please page refresh karein ya dobara boliye.";
+          const finalMsg = "Communication timeout. Please refresh the page or try again.";
           setAiResponse(finalMsg);
-          speak("Response nahi aaya. Please repeat karein ya refresh karein.");
+          speak("Request failed. Please try again.");
           return false;
         }
         return prev;
@@ -444,9 +444,9 @@ function MainApp() {
            if (nums) {
              const amount = parseInt(nums[nums.length - 1], 10);
              let type = 'income';
-             if (transcript.match(/(kharcha|expense|خرچہ|kharch)/i)) type = 'expense';
-             if (transcript.match(/(udhar|udhari|baqi|ادھار|باقیہ)/i)) type = 'debt';
-             if (transcript.match(/(jama|wapsi|mil gaye|جمع|واپسی)/i)) type = 'payment';
+             if (transcript.match(/(kharcha|expense|kharch)/i)) type = 'expense';
+             if (transcript.match(/(udhar|udhari|baqi|credit)/i)) type = 'debt';
+             if (transcript.match(/(jama|wapsi|payment|recovery|received)/i)) type = 'payment';
              
              actions = [{
                amount,
@@ -492,22 +492,22 @@ function MainApp() {
           }
 
           const actionText = parsed.type === 'payment' 
-            ? `Rs. ${parsed.amount} wapsi.`
+            ? `Rs. ${parsed.amount} payment recovery.`
             : parsed.type === 'debt'
-            ? `Rs. ${parsed.amount} udhaar.`
+            ? `Rs. ${parsed.amount} debt.`
             : parsed.type === 'income'
-            ? `Rs. ${parsed.amount} kamai.`
-            : `Rs. ${parsed.amount} record.`;
+            ? `Rs. ${parsed.amount} income.`
+            : `Rs. ${parsed.amount} recorded.`;
           fullResponse += actionText + " ";
         }
 
         if (recordedCount > 0) {
           await loadData(user.uid);
-          const finalMsg = "Zabardast! COB ne record kar liya: " + fullResponse;
+          const finalMsg = "Success! COB has recorded: " + fullResponse;
           setAiResponse(finalMsg);
           speak(finalMsg);
         } else {
-          const failMsg = `Sain! COB ko "${transcript}" samajh nahi aaya. Amount aur type (Sale/Kharcha/Udhar) saaf boliye.`;
+          const failMsg = `I couldn't understand "${transcript}". Please clearly state the amount and transaction type (Income, Expense, or Debt).`;
           setAiResponse(failMsg);
           speak(failMsg);
         }
@@ -529,14 +529,14 @@ function MainApp() {
           return;
         }
 
-        if (answer.toLowerCase().includes('rate list mein nahi') || answer.toLowerCase().includes('available nahi')) {
-           const match = transcript.match(/(hai|rate|price|btayen) (.*)/i);
+        if (answer.toLowerCase().includes('rate list') || answer.toLowerCase().includes('available')) {
+           const match = transcript.match(/(rate|price|cost|is) (.*)/i);
            const itemName = match ? match[2] : "Unknown Item";
            
            if (!notifications.some(n => n.item === itemName)) {
              const newNotif = {
                item: itemName,
-               message: `Sain! "${itemName}" rate list mein nahi mila. Kya add karu?`,
+               message: `Item "${itemName}" not found in rate list. Shall I add it?`,
                rawTranscript: transcript
              };
              if (user) addNotification(user.uid, newNotif);
@@ -550,12 +550,12 @@ function MainApp() {
     } catch (error: any) {
       clearTimeout(processingTimeout);
       console.error("Failed to process voice:", error);
-      let errorMsg = "Sain! COB ko apka baat samajh nahi aaya. Thora saaf Urdu me boliye.";
+      let errorMsg = "Sorry, I couldn't understand that command. Please try again.";
       
       if (error?.message?.includes('GEMINI_API_KEY')) {
-        errorMsg = "Sain! Gemini API key ka koi masla hai. Settings me check karein.";
+        errorMsg = "API Configuration Error. Please check your system settings.";
       } else if (error?.message?.includes('permission')) {
-        errorMsg = "API permission denied. Key check karein.";
+        errorMsg = "Access Denied. Please verify your credentials.";
       }
       
       setAiResponse(errorMsg);
@@ -651,12 +651,12 @@ function MainApp() {
       
       <div className="flex flex-col gap-2 flex-grow overflow-x-auto lg:overflow-visible no-scrollbar pb-4 lg:pb-0">
         <NavItem icon={BarChart3} label="Dashboard" active={view === 'dashboard'} onClick={() => { setView('dashboard'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={History} label="Ajj ka Hisab" active={view === 'history'} onClick={() => { setView('history'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={Users} label={`Udhaar (Rs. ${totalDebtBalance})`} active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={ShoppingBag} label="Rate List & Stock" active={view === 'whatsapp'} onClick={() => { setView('whatsapp'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={MessageSquare} iconColor="text-[#25D366]" label="AI WhatsApp Bot" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={IndianRupee} label={`Shop Store (${coins} Coins)`} active={view === 'store'} onClick={() => { setView('store'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={Calendar} label="Purana Hisab" active={view === 'alldays'} onClick={() => { setView('alldays'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={History} label="Daily Journal" active={view === 'history'} onClick={() => { setView('history'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={Users} label={`Receivables (Rs. ${totalDebtBalance})`} active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={ShoppingBag} label="Inventory & Rates" active={view === 'whatsapp'} onClick={() => { setView('whatsapp'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={MessageSquare} iconColor="text-[#25D366]" label="WhatsApp Business Bot" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={IndianRupee} label={`Business Store (${coins} Coins)`} active={view === 'store'} onClick={() => { setView('store'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={Calendar} label="All History" active={view === 'alldays'} onClick={() => { setView('alldays'); setIsMobileMenuOpen(false); }} />
       </div>
 
       <div className="pt-6 border-t border-white/5">
@@ -723,7 +723,7 @@ function MainApp() {
               <button 
                 onClick={resetDay}
                 className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-500/30 transition-all shadow-lg active:scale-95"
-                title="Ajj ka hisab yahan se shuru karein"
+                title="Start a new session for today"
               >
                 <History className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Start Day</span>
@@ -738,8 +738,8 @@ function MainApp() {
 
         <section className="flex justify-between items-start mb-12">
           <div>
-            <h2 className="text-4xl font-bold mb-2 tracking-tight">Kese hain <span className="text-emerald-400">aap</span>?</h2>
-            <p className="text-slate-400 font-light italic">"COB is monitoring your shop's transactions in real-time."</p>
+            <h2 className="text-4xl font-bold mb-2 tracking-tight">Welcome back, <span className="text-emerald-400">{user?.displayName?.split(' ')[0]}</span>.</h2>
+            <p className="text-slate-400 font-light italic">"COB is monitoring your business transactions in real-time."</p>
           </div>
           
           <div className="flex">
@@ -767,8 +767,8 @@ function MainApp() {
                 <CheckCircle2 className="w-8 h-8 text-emerald-500" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-emerald-500 mb-1">Cloud Backup: ON</h3>
-                <p className="text-sm text-slate-400 max-w-sm">Apka sara hisab Google Cloud (Firebase) par mehfooz ho raha hai. Kisi bhi mobile par login krte hi data wapis aa jaye ga.</p>
+                <h3 className="text-xl font-bold text-emerald-500 mb-1">Cloud Backup: SECURED</h3>
+                <p className="text-sm text-slate-400 max-w-sm">Your business records are safely synchronized to Google Cloud. Your data is accessible from any authorized device.</p>
               </div>
             </div>
           </motion.div>
@@ -777,7 +777,7 @@ function MainApp() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
           <StatCard 
-            label="Ajj ki Kamai (Jama)" 
+            label="Today's Earnings" 
             value={totalIncome} 
             type="up" 
             icon={TrendingUp} 
@@ -785,7 +785,7 @@ function MainApp() {
             onClick={() => setActiveStatFilter(activeStatFilter === 'income' ? null : 'income')} 
           />
           <StatCard 
-            label="Ajj ke Kharchay" 
+            label="Today's Expenses" 
             value={totalExpense} 
             type="down" 
             icon={Wallet} 
@@ -793,7 +793,7 @@ function MainApp() {
             onClick={() => setActiveStatFilter(activeStatFilter === 'expense' ? null : 'expense')} 
           />
           <StatCard 
-            label="Ajj ka Naya Udhaar" 
+            label="New Outstanding Debt" 
             value={totalDailyDebt} 
             type="debt" 
             icon={CreditCard} 
@@ -813,7 +813,7 @@ function MainApp() {
             }`}
           >
             {shopOn ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-            {shopOn ? 'Dukan Barhaein (End Shop)' : 'Dukan Kholein (Start Shop)'}
+            {shopOn ? 'End Session' : 'Start Session'}
           </button>
         </div>
 
@@ -854,7 +854,7 @@ function MainApp() {
                   type="text" 
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="COB ko batayein (Boliye ya Type krein)..." 
+                  placeholder="Tell COB about a transaction (e.g. Sold milk for 200)..." 
                   className="w-full glass bg-white/5 rounded-2xl py-5 px-6 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-light italic text-base placeholder:text-slate-600 shadow-2xl"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter' && chatInput.trim()) {
@@ -878,7 +878,7 @@ function MainApp() {
             </>
           ) : (
             <div className="w-full max-w-lg space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <h3 className="text-xl font-bold text-center mb-2">Manual Record Karein</h3>
+               <h3 className="text-xl font-bold text-center mb-2">Record Manual Entry</h3>
                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Amount (Rs.)</label>
@@ -897,10 +897,10 @@ function MainApp() {
                       value={manualEntry.type}
                       onChange={e => setManualEntry({...manualEntry, type: e.target.value})}
                     >
-                      <option value="income">Income (Kamai)</option>
-                      <option value="expense">Expense (Kharcha)</option>
-                      <option value="debt">Udhaar (Debt)</option>
-                      <option value="payment">Jama (Payment)</option>
+                      <option value="income">Income</option>
+                      <option value="expense">Expense</option>
+                      <option value="debt">Debt (Credit)</option>
+                      <option value="payment">Payment Received</option>
                     </select>
                   </div>
                </div>
@@ -909,7 +909,7 @@ function MainApp() {
                     <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Customer Name</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Ahmed" 
+                      placeholder="e.g. John Doe" 
                       className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
                       value={manualEntry.customerName}
                       onChange={e => setManualEntry({...manualEntry, customerName: e.target.value})}
@@ -919,7 +919,7 @@ function MainApp() {
                     <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Mobile / Phone</label>
                     <input 
                       type="text" 
-                      placeholder="0300..." 
+                      placeholder="+92..." 
                       className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
                       value={manualEntry.phone}
                       onChange={e => setManualEntry({...manualEntry, phone: e.target.value})}
@@ -927,10 +927,10 @@ function MainApp() {
                   </div>
                </div>
                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Kaam / Description</label>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Description</label>
                   <input 
                     type="text" 
-                    placeholder="e.g. Sale, Bijli Bill" 
+                    placeholder="e.g. Inventory Purchase, Shop Rent" 
                     className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
                     value={manualEntry.description}
                     onChange={e => setManualEntry({...manualEntry, description: e.target.value})}
@@ -956,19 +956,19 @@ function MainApp() {
                     }
                     
                     await loadData(user.uid);
-                    setAiResponse("Zabardast! Manual entry record ho gayi hai.");
+                    setAiResponse("Success! Manual entry has been recorded.");
                     setManualEntry({ amount: '', type: 'income', description: '', customerName: '', phone: '' });
                     setShowManualForm(false);
-                    speak("Record update ho gaya hai.");
+                    speak("Record updated successfully.");
                   } catch (e) {
-                    setAiResponse("Koi masla aa gaya manual check me.");
+                    setAiResponse("An error occurred while saving the entry.");
                   } finally {
                     setIsProcessing(false);
                   }
                 }}
                 className="w-full py-4 bg-emerald-500 text-slate-950 font-bold rounded-2xl shadow-xl shadow-emerald-500/20 active:scale-95 transition-all text-lg"
                >
-                 Ajj ka Record Save Karein
+                 Save Transaction
                </button>
             </div>
           )}
@@ -997,16 +997,16 @@ function MainApp() {
             <div className="flex items-center gap-4">
               <div className="flex flex-col">
                 <h3 className="font-bold text-xl uppercase tracking-tight">
-                  {activeStatFilter === 'income' && "Ajj ki Kamai (Jama)"}
-                  {activeStatFilter === 'expense' && "Ajj ke Kharchay"}
-                  {activeStatFilter === 'debt' && "Naya Udhaar (Baqi)"}
-                  {activeStatFilter === 'all_debt' && "Kul Udhaar Details"}
-                  {!activeStatFilter && view === 'dashboard' && 'Ajj ke Kaam'}
-                  {view === 'history' && 'Ajj ka Hisab'}
-                  {view === 'alldays' && 'Purani History (All Days)'}
-                  {view === 'customers' && 'Pending Hisab'}
-                  {view === 'ai' && 'COB WhatsApp Sync'}
-                  {view === 'whatsapp' && 'Product List'}
+                  {activeStatFilter === 'income' && "Today's Earnings"}
+                  {activeStatFilter === 'expense' && "Today's Expenses"}
+                  {activeStatFilter === 'debt' && "New Accounts Receivable"}
+                  {activeStatFilter === 'all_debt' && "All Debts Outstanding"}
+                  {!activeStatFilter && view === 'dashboard' && "Today's Activity"}
+                  {view === 'history' && "Daily Journal"}
+                  {view === 'alldays' && "Historical Archive"}
+                  {view === 'customers' && "Customer Ledgers"}
+                  {view === 'ai' && "Cloud WhatsApp Sync"}
+                  {view === 'whatsapp' && "Stock & Rate List"}
                 </h3>
                 <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-1">
                   {activeStatFilter ? 'Specific Records' : 'Database Sync: Online'}
@@ -1047,7 +1047,7 @@ function MainApp() {
                 {dayWiseHistory.length === 0 && (
                   <div className="py-24 text-center">
                     <Calendar className="w-12 h-12 text-slate-800 mx-auto mb-4" />
-                    <p className="text-slate-500 italic">"Abhi tak koi purani history nahi mili."</p>
+                    <p className="text-slate-500 italic">"No historical archives found yet."</p>
                   </div>
                 )}
               </div>
@@ -1069,14 +1069,14 @@ function MainApp() {
                              {customer.phone}
                           </div>
                         )}
-                        <p className="text-xs text-rose-400 font-mono italic">Hisab Baqi: Rs. {(customer.totalDebt || 0).toLocaleString()}</p>
+                        <p className="text-xs text-rose-400 font-mono italic">Outstanding: Rs. {(customer.totalDebt || 0).toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="flex gap-2">
                        <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const text = `Assalamu Alaikum ${customer.name}, aapka is waqt ka COB Udhaar balance Rs. ${customer.totalDebt} hai. Shukriya.`;
+                          const text = `Greetings ${customer.name}, your current outstanding balance with us is Rs. ${customer.totalDebt}. Thank you.`;
                           const phoneNum = customer.phone?.replace(/[^0-9]/g, '');
                           window.open(phoneNum ? `https://wa.me/${phoneNum}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`);
                         }}
@@ -1313,7 +1313,7 @@ function MainApp() {
                       {products.length === 0 && !showProductForm && (
                         <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2rem]">
                           <ShoppingBag className="w-12 h-12 text-slate-800 mx-auto mb-4" />
-                          <p className="text-slate-500 italic">"Koi product nahi mila. Aap yahan product list bana saktay hain taki COB WhatsApp par jawab de sakay."</p>
+                          <p className="text-slate-500 italic">"No products found. Add items to your rate list so COB can automate customer inquiries on WhatsApp."</p>
                         </div>
                       )}
                     </div>
@@ -1346,7 +1346,7 @@ function MainApp() {
                       if (coins >= 1000) {
                         setCoins(prev => prev - 1000);
                         setShopSize('Medium');
-                        speak("Mubarak ho! Aapki dukan ab Medium ho gayi hai.");
+                        speak("Congratulations! Your shop has been upgraded to Medium size.");
                       }
                     }}
                   />
@@ -1360,7 +1360,7 @@ function MainApp() {
                       if (coins >= 2500) {
                         setCoins(prev => prev - 2500);
                         setShopSize('Large');
-                        speak("Aapki dukan ab bare level par aa gayi hai. Large Shop unlocked!");
+                        speak("Your business is reaching new heights. Large Shop unlocked!");
                       }
                     }}
                   />
@@ -1401,8 +1401,8 @@ function MainApp() {
                     <Calendar className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold">Rozana History</h2>
-                    <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">Daily Business Records</p>
+                    <h2 className="text-xl font-bold">Historical Records</h2>
+                    <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">Chronological Business Archive</p>
                   </div>
                 </div>
                 <button 
@@ -1432,7 +1432,7 @@ function MainApp() {
                 {dayWiseHistory.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-20 text-slate-500 italic">
                     <History className="w-12 h-12 mb-4 opacity-20" />
-                    <p>Koi history nahi mili.</p>
+                    <p>No records found.</p>
                   </div>
                 )}
               </div>
@@ -1467,33 +1467,33 @@ function TransactionRow({ t, context }: any) {
     if (t.type === 'debt') { 
       amountSign = '+'; 
       colorStyle = 'text-rose-400 bg-rose-500/20'; 
-      typeLabel = 'Udhaar Diya (Baqiya)';
+      typeLabel = 'Debt Issued';
     }
     if (t.type === 'payment') { 
       amountSign = '-'; 
       colorStyle = 'text-emerald-400 bg-emerald-500/20'; 
-      typeLabel = 'Udhaar Wapsi (Jama)';
+      typeLabel = 'Debt Recovery';
     }
   } else {
     if (t.type === 'income') { 
       amountSign = '+'; 
       colorStyle = 'text-emerald-400 bg-emerald-500/20'; 
-      typeLabel = 'Kamai';
+      typeLabel = 'Income';
     }
     if (t.type === 'payment') { 
       amountSign = '-'; 
       colorStyle = 'text-emerald-400 bg-emerald-500/20'; 
-      typeLabel = 'Udhaar Wapsi (Jama)';
+      typeLabel = 'Payment Received';
     }
     if (t.type === 'expense') { 
       amountSign = '-'; 
       colorStyle = 'text-rose-400 bg-rose-500/20'; 
-      typeLabel = 'Kharcha';
+      typeLabel = 'Expense';
     }
     if (t.type === 'debt') { 
       amountSign = '+'; 
       colorStyle = 'text-blue-400 bg-blue-500/20'; 
-      typeLabel = 'Udhaar Diya';
+      typeLabel = 'Debt Issued';
     }
   }
 
@@ -1550,11 +1550,11 @@ function TransactionRow({ t, context }: any) {
         <button 
           onClick={(e) => {
             e.stopPropagation();
-            const text = `COB Business Bill:
+            const text = `COB Business Snapshot:
 Item: ${t.description}
 Price: Rs. ${t.amount}
-Date: ${t.timestamp?.seconds ? safeFormat(new Date(t.timestamp.seconds * 1000), 'p, MMM d') : 'Ajj'}
-Shukriya!`;
+Date: ${t.timestamp?.seconds ? safeFormat(new Date(t.timestamp.seconds * 1000), 'p, MMM d') : 'Today'}
+Thank you!`;
             window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
           }}
           className="p-3 bg-white/5 hover:bg-emerald-500 hover:text-slate-950 rounded-xl transition-all shadow-lg active:scale-95 group/wa"
@@ -1629,7 +1629,7 @@ function DayCard({ day }: { day: any }) {
         <div className="text-right flex items-center gap-4">
           <div>
             <p className="text-sm font-mono font-bold text-emerald-400">Rs. {dailyEarnings.toLocaleString()}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">Kamai</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">Earnings</p>
           </div>
           <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
             <ChevronRight className="w-5 h-5 text-slate-500" />

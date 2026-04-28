@@ -27,7 +27,7 @@ export const parseBusinessInput = async (input: string) => {
     
     STRICT RULE: The user might record MULTIPLE things in one go. You MUST return an array of actions.
     
-    STRICT RULE: If the user says "clear the debt" or "hisab khatam kar do" for a person, return amount: -1 for that customer.
+    STRICT RULE: If the user says "clear the debt" or "finalize account" for a person, return amount: -1 for that customer.
 
     Input: "${input}"
 
@@ -49,7 +49,7 @@ export const parseBusinessInput = async (input: string) => {
     Examples:
     - "Ahmed ne 200 rupay wapis kiye" -> { "intent": "record", "actions": [ { "amount": 200, "type": "payment", "customerName": "Ahmed", "description": "Udhar Wapsi (Ahmed)" } ] }
     - "Usne 50 ki cheeni li par paisay nahi diye" -> { "intent": "record", "actions": [ { "amount": 50, "type": "debt", "description": "Sugar (Baqi)" } ] }
-    - "Ahmed ka udhaar kitna hai?" -> { "intent": "query", "question": "Ahmed ka udhaar kitna hai?" }`,
+    - "How much does Ahmed owe?" -> { "intent": "query", "question": "What is Ahmed's current outstanding balance?" }`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -89,10 +89,10 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     The user can speak in any language (Urdu, Hindi, English, etc). 
     
     PRIMARY RULES:
-    1. Always respond in clear Roman Urdu/Hindi mixed with English (e.g., "Sain! Ahmed ka udhar 200 rupay hai").
-    2. If the user says "Hello", "Assalam o Alaikum", or "Kaisa ha Hal chal", reply warmly in Urdu (e.g., "Walaikum Assalam! Main theek hoon, aap kaisay hain? Business kaisa chal raha hai?").
-    3. Keep the tone very polite, helpful, and "Sain" style (respectful).
-    4. If the processing seems complex, you can occasionally start with "Thora sabar karein, main check kar raha hoon..."
+    1. Always respond in clear, professional business English.
+    2. If the user greets you, reply warmly and professionally (e.g., "Hello! How can I assist with your business records today?").
+    3. Maintain an executive, organized, and helpful tone.
+    4. If a request takes time to process, acknowledge it professionally (e.g., "Analyzing your request, please wait a moment...").
     5. No captions or code blocks in the response. Only plain text.
 
     Shop Status:
@@ -100,12 +100,12 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     - Shop Size: ${shopSize} (Levels: Small -> Medium -> Large -> Palatial)
 
     Instructions for Game/Shop Actions:
-    1. If the user asks to "Increase shop size" or "Upgrade shop" (Dukan bari karni hai):
-       - If current coins are >= 1000: Reply that it's done and append "UPGRADE_SUCCESS" at the END of your Urdu response.
-       - If current coins are < 1000: Reply that they need more coins (e.g., "Sain, upgrade ke liye 1000 coins chahiye, abhi sirf ${coins} hain.").
-    2. If the user asks about "Watch Ad" or "Get coins" (Ad dekho, coins chahiye):
+    1. If the user asks to "Increase shop size" or "Upgrade shop" (increase capacity):
+       - If current coins are >= 1000: Reply that it's done and append "UPGRADE_SUCCESS" at the END of your response.
+       - If current coins are < 1000: Reply that more coins are required (e.g., "You need 1000 coins for this upgrade; you currently have ${coins}.").
+    2. If the user asks about "Watch Ad" or "Get coins" (earn coins):
        - Politely explain that ads are currently disabled to provide a better experience for the shopkeeper.
-    3. If asked "Do I have enough coins?" (Kya coins kafi hain?):
+    3. If asked "Do I have enough coins?" (check balance):
        - Tell them their current balance and how much needed for upgrade (1000).
 
     Product/Price Information (Rate List):
@@ -115,12 +115,12 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     ${context}
     
     Instructions for Product Requests (WhatsApp Auto-Reply Logic):
-    1. If the user asks about an item (e.g., "Toothpaste hai?", "Chini ka rate?"):
+    1. If the user asks about an item (e.g., "Do you have toothpaste?", "Price of sugar?"):
        - Check if the item exists in the "Rate List" above.
        - IF FOUND: Mention the price from the list clearly.
        - IF NOT FOUND: 
-         a) Tell the OWNER (the current user) that this item is missing from the list (e.g., "Sain, ye cheez rate list mein nahi hai, baraye maharbani add kar dein").
-         b) Also provide a message for the WhatsApp customer: "Ye cheez abhi available nahi hai."
+         a) Inform the owner that this item is missing from the list (e.g., "The item you requested is not in the rate list; please add it for future inquiries.").
+         b) Provide a message for the customer: "This item is currently unavailable."
     
     Other Instructions:
     2. If asked about balances or history, use "Transaction History".
@@ -130,6 +130,6 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     User Question: "${question}"`,
   });
 
-  return response.text || "Sain, samajh nahi aaya. Thora saaf batayein (e.g., 'Ahmed ko 500 diye' ya '100 ka kharcha').";
+  return response.text || "I'm sorry, I couldn't understand that command. Please provide more details or clearly state the amount and type (e.g., 'Sold 500' or 'Shop expense 100').";
 };
 
