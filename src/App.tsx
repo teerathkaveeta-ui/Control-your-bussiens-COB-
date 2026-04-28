@@ -44,14 +44,6 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 
-const Logo = () => (
-  <div className="flex items-end gap-[2px] h-8 w-10">
-    <div className="w-2 h-3 bg-emerald-500 rounded-[1px] shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-    <div className="w-2 h-5 bg-emerald-400 rounded-[1px] shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-    <div className="w-2 h-8 bg-emerald-300 rounded-[1px] shadow-[0_0_12px_rgba(16,185,129,0.5)]"></div>
-  </div>
-);
-
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
   constructor(props: any) {
     super(props);
@@ -93,6 +85,28 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
     return fallback;
   }
 };
+
+const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
+  <div className={`relative flex items-center justify-center ${className}`}>
+    <div className="absolute inset-0 bg-emerald-500/20 blur-lg rounded-full animate-pulse"></div>
+    <svg 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+      className="w-full h-full text-emerald-400 relative z-10"
+    >
+      <path 
+        d="M3 18L9 12L13 16L21 8" 
+        stroke="currentColor" 
+        strokeWidth="3" 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        className="drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]"
+      />
+      <circle cx="21" cy="8" r="2" fill="currentColor" />
+    </svg>
+  </div>
+);
 
 export default function App() {
   return (

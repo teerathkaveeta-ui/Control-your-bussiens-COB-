@@ -17,8 +17,9 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -47,22 +48,20 @@ jobs:
           gradle-version: 8.5
 
       - name: Build Android APK
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
         run: |
           npm run build
           npx cap sync android
           cd android
-          # Ensure gradlew exists to avoid common Capacitor sync issues in CI
-          if [ ! -f gradlew ]; then
-            echo "gradlew missing, generating with gradle wrapper..."
-            gradle wrapper --gradle-version 8.5
-          fi
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
           # Locate the APK for the upload step
-          ls -R app/build/outputs/apk/
+          mkdir -p ../dist-apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../dist-apk/COB_v1.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug.apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: COB_Android_APK
+          path: dist-apk/COB_v1.0.apk
