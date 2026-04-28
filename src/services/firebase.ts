@@ -14,7 +14,8 @@ import {
   getDoc, 
   updateDoc, 
   setDoc,
-  getDocFromServer
+  getDocFromServer,
+  deleteDoc
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -248,6 +249,16 @@ export const syncToCloud = async (businessId: string, key: string, data: any) =>
     await setDoc(docRef, { [key]: data }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+
+export const deleteTransaction = async (businessId: string, transactionId: string) => {
+  const path = `businesses/${businessId}/transactions/${transactionId}`;
+  try {
+    const docRef = doc(db, path);
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 };
 

@@ -13,7 +13,8 @@ import {
   updateProduct,
   getNotifications,
   addNotification,
-  syncToCloud
+  syncToCloud,
+  deleteTransaction
 } from './services/firebase';
 import { parseBusinessInput, answerBusinessQuestion } from './services/gemini';
 import VoiceRecorder from './components/VoiceRecorder';
@@ -94,23 +95,54 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
-    <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full animate-pulse"></div>
-    <div className="absolute inset-0 bg-emerald-400/10 blur-md rounded-full animate-ping"></div>
+    {/* Dynamic Background Glow */}
+    <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 animate-pulse"></div>
+    <div className="absolute inset-0 bg-emerald-400/5 blur-xl rounded-full animate-ping"></div>
+
     <svg 
       viewBox="0 0 24 24" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
-      className="w-full h-full text-emerald-400 relative z-10 filter drop-shadow-[0_0_12px_rgba(52,211,153,0.9)]"
+      className="w-full h-full relative z-10 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
     >
+      {/* Background Shape */}
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
+      
+      {/* The Graph Path - Solid & Bold */}
       <path 
-        d="M3 18L7 14L11 18L21 8" 
-        stroke="currentColor" 
+        d="M4 18L9 12L13 16L20 7" 
+        stroke="#10b981" 
         strokeWidth="3.5" 
         strokeLinecap="round" 
         strokeLinejoin="round" 
       />
-      <circle cx="21" cy="8" r="2.5" fill="#10b981" />
-      <circle cx="21" cy="8" r="4" stroke="currentColor" strokeWidth="1" className="animate-ping opacity-50" />
+      
+      {/* Area under the graph - Semi-transparent fill */}
+      <path 
+        d="M4 18L9 12L13 16L20 7V20H4V18Z" 
+        fill="url(#logo-gradient)" 
+        fillOpacity="0.2"
+      />
+
+      {/* Axis Lines */}
+      <path 
+        d="M3 21H21M3 3V21" 
+        stroke="white" 
+        strokeWidth="1.5" 
+        strokeLinecap="round" 
+        strokeOpacity="0.2"
+      />
+
+      {/* Modern Circular Terminals */}
+      <circle cx="20" cy="7" r="2.5" fill="#10b981" />
+      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.3" />
+
+      <defs>
+        <linearGradient id="logo-gradient" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#10b981" />
+          <stop offset="1" stopColor="#10b981" stopOpacity="0" />
+        </linearGradient>
+      </defs>
     </svg>
   </div>
 );
@@ -149,6 +181,7 @@ function MainApp() {
   const [manualEntry, setManualEntry] = useState({ amount: '', type: 'income', description: '', customerName: '', phone: '' });
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const lastProcessedTranscript = React.useRef<string | null>(null);
+  const lastRecordedTransaction = React.useRef<{ amount: number, type: string, time: number } | null>(null);
 
   // Effect to process transcript queue
   useEffect(() => {
@@ -235,19 +268,24 @@ function MainApp() {
   };
 
   useEffect(() => {
+    // Hide splash screen immediately on mount to prevent blank screen
+    const hideSplash = async () => {
+      try {
+        await SplashScreen.hide();
+      } catch (e) {
+        console.warn("SplashScreen hide failed", e);
+      }
+    };
+    hideSplash();
+
     // Safety timeout: Ensure loading finishes even if auth listener takes too long
     const safetyTimeout = setTimeout(() => {
       setLoading(false);
-    }, 5000);
+    }, 4000);
 
     const unsubscribe = auth.onAuthStateChanged(async (u: any) => {
       try {
         clearTimeout(safetyTimeout);
-        try {
-          await SplashScreen.hide();
-        } catch (e) {
-          console.warn("SplashScreen hide failed (probably not on device)", e);
-        }
         setUser(u);
         if (u) {
           const shopData = await getShopData();
@@ -322,11 +360,47 @@ function MainApp() {
     speak(msg);
   };
 
+  const handleDeleteTransaction = async (t: any) => {
+    if (!user || !t.id) return;
+    
+    const confirmed = window.confirm("Are you sure you want to delete this transaction?");
+    if (!confirmed) return;
+
+    try {
+      setIsProcessing(true);
+      await deleteTransaction(user.uid, t.id);
+      
+      // If it was debt/payment, we should ideally reverse the customer total
+      // But for now, we'll just clear the transaction and let the next reload/calc handle it
+      if ((t.type === 'debt' || t.type === 'payment') && t.customerName) {
+        const reverseAmount = t.type === 'debt' ? -t.amount : t.amount;
+        await updateCustomerDebt(user.uid, t.customerName, reverseAmount);
+      }
+      
+      setTransactions(prev => prev.filter(item => item.id !== t.id));
+      setAiResponse("Transaction deleted successfully.");
+      speak("Transaction deleted.");
+      await loadData(user.uid);
+    } catch (err) {
+      console.error("Delete failed:", err);
+      setAiResponse("Failed to delete transaction.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const resetDay = async () => {
+    const confirmed = window.confirm("Are you sure you want to start a new session? This will clear today's activities from your dashboard view and save them to history.");
+    if (!confirmed) return;
+
     const now = Date.now();
     localStorage.setItem('lastSessionStart', now.toString());
     setLastSessionStart(now);
-    const msg = "Understood. A new journal session has started for today.";
+    
+    // Clear and reload
+    await loadData(user!.uid);
+    
+    const msg = "Naya silsila shuru ho gaya hai. Puraana record mehfooz hai.";
     setAiResponse(msg);
     speak(msg);
   };
@@ -339,16 +413,24 @@ function MainApp() {
     
     const setVoice = () => {
       const voices = window.speechSynthesis.getVoices();
-      // Use professional English voice for global standard
-      const preferredVoice = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) || 
-                             voices.find(v => v.lang.startsWith('en')) ||
-                             voices.find(v => v.lang.includes('IN'));
+      
+      // Try to detect if text is Urdu/Hindi based on characters
+      const isUrdu = /[\u0600-\u06FF]/.test(text);
+      
+      let preferredVoice;
+      if (isUrdu) {
+        preferredVoice = voices.find(v => v.lang.startsWith('ur') || v.lang.startsWith('hi'));
+      } else {
+        preferredVoice = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) || 
+                         voices.find(v => v.lang.startsWith('en')) ||
+                         voices.find(v => v.lang.includes('IN'));
+      }
                              
       if (preferredVoice) {
         utterance.voice = preferredVoice;
         utterance.lang = preferredVoice.lang;
       } else {
-        utterance.lang = 'en-US';
+        utterance.lang = isUrdu ? 'ur-PK' : 'en-US';
       }
       
       utterance.rate = 1.0; 
@@ -373,6 +455,13 @@ function MainApp() {
       console.log("Skipping empty transcript");
       return;
     }
+
+    // Deduplication check
+    if (lastProcessedTranscript.current === transcript.trim()) {
+      console.log("Skipping duplicate transcript processing");
+      return;
+    }
+    lastProcessedTranscript.current = transcript.trim();
 
     setIsProcessing(true);
     setLastTranscript(transcript);
@@ -459,10 +548,37 @@ function MainApp() {
         for (const actionData of actions) {
           const parsed = actionData;
           
-          if (!parsed.amount || isNaN(parsed.amount) || parsed.amount <= 0) {
+          if (!parsed.amount || isNaN(parsed.amount) || (parsed.amount <= 0 && parsed.amount !== -1)) {
             console.log("Skipping invalid amount action:", parsed);
             continue;
           }
+
+          // Handle special Signal: Clear All Debt (-1)
+          if ((parsed.type === 'debt' || parsed.type === 'payment') && parsed.customerName && parsed.amount === -1) {
+            const balance = transactions.reduce((acc, currentT) => {
+              if (currentT.customerName === parsed.customerName) {
+                if (currentT.type === 'debt') return acc + (currentT.amount || 0);
+                if (currentT.type === 'payment') return acc - (currentT.amount || 0);
+              }
+              return acc;
+            }, 0);
+            parsed.amount = Math.abs(balance);
+            // If balance was positive, they are paying it off (payment)
+            // If balance was negative (unlikely), it would be a debt adjustment
+            parsed.type = 'payment'; 
+            parsed.description = `Settlement: Full debt cleared for ${parsed.customerName}`;
+          }
+
+          // De-duplication check for identical amounts within 10 seconds
+          const now = Date.now();
+          if (lastRecordedTransaction.current && 
+              lastRecordedTransaction.current.amount === parsed.amount && 
+              lastRecordedTransaction.current.type === parsed.type && 
+              (now - lastRecordedTransaction.current.time) < 10000) {
+            console.log("Skipping suspected duplicate recording:", parsed);
+            continue;
+          }
+          lastRecordedTransaction.current = { amount: parsed.amount, type: parsed.type, time: now };
 
           console.log("Saving to Firebase:", parsed);
           await addTransaction(user.uid, {
@@ -473,21 +589,7 @@ function MainApp() {
           recordedCount++;
 
           if ((parsed.type === 'debt' || parsed.type === 'payment') && parsed.customerName) {
-            let actualAmount = parsed.amount;
-            
-            if (actualAmount === -1) {
-              const balance = transactions.reduce((acc, currentT) => {
-                if (currentT.customerName === parsed.customerName) {
-                  if (currentT.type === 'debt') return acc + (currentT.amount || 0);
-                  if (currentT.type === 'payment') return acc - (currentT.amount || 0);
-                }
-                return acc;
-              }, 0);
-              actualAmount = balance;
-              parsed.amount = balance;
-            }
-
-            const debtChange = parsed.type === 'payment' ? -actualAmount : actualAmount;
+            const debtChange = parsed.type === 'payment' ? -parsed.amount : parsed.amount;
             await updateCustomerDebt(user.uid, parsed.customerName, debtChange);
           }
 
@@ -611,9 +713,16 @@ function MainApp() {
   // Filter transactions for "Daily" counts (Today's totals)
   const dailyTransactions = transactions.filter(t => {
     const tTime = t.timestamp?.toDate ? t.timestamp.toDate().getTime() : (t.timestamp?.seconds * 1000 || Date.now());
+    
+    // User wants sessions to clear when they reset/start new session
+    const resetBoundary = lastSessionStart || 0;
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    return tTime >= startOfToday.getTime();
+    
+    // Use whichever is later: midnight or the manual reset time
+    const boundary = Math.max(startOfToday.getTime(), resetBoundary);
+    
+    return tTime >= boundary;
   });
 
   const totalIncome = dailyTransactions
@@ -1012,6 +1121,14 @@ function MainApp() {
                   {activeStatFilter ? 'Specific Records' : 'Database Sync: Online'}
                 </p>
               </div>
+              
+              <button 
+                onClick={() => setShowManualForm(!showManualForm)}
+                className="w-10 h-10 bg-emerald-500 text-slate-950 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20 active:scale-90 transition-all"
+                title="Add Record"
+              >
+                <Plus className="w-6 h-6" />
+              </button>
             </div>
           </div>
           
@@ -1034,7 +1151,12 @@ function MainApp() {
                   activeStatFilter === 'all_debt' ? transactions.filter(t => t.type === 'debt' || t.type === 'payment') :
                   dailyTransactions
                 ) : transactions).map((t) => (
-                  <TransactionRow key={t.id} t={t} context={activeStatFilter || (view === 'dashboard' && activeStatFilter === null ? 'dashboard' : null)} />
+                  <TransactionRow 
+                    key={t.id} 
+                    t={t} 
+                    context={activeStatFilter || (view === 'dashboard' && activeStatFilter === null ? 'dashboard' : null)} 
+                    onDelete={() => handleDeleteTransaction(t)}
+                  />
                 ))}
               </div>
             )}
@@ -1042,7 +1164,7 @@ function MainApp() {
             {view === 'alldays' && (
               <div className="p-4 space-y-4">
                 {dayWiseHistory.map((day, idx) => (
-                  <DayCard key={day.id || idx} day={day} />
+                  <DayCard key={day.id || idx} day={day} onDelete={handleDeleteTransaction} />
                 ))}
                 {dayWiseHistory.length === 0 && (
                   <div className="py-24 text-center">
@@ -1422,8 +1544,13 @@ function MainApp() {
                     </div>
                     
                     <div className="space-y-2 pl-4 border-l border-white/10">
-                      {day.items.map((t, tIdx) => (
-                        <TransactionRow key={tIdx} t={t} context="history" />
+                      {day.items.map((t: any, tIdx: number) => (
+                        <TransactionRow 
+                          key={tIdx} 
+                          t={t} 
+                          context="history" 
+                          onDelete={() => handleDeleteTransaction(t)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -1456,7 +1583,7 @@ function MainApp() {
   );
 }
 
-function TransactionRow({ t, context }: any) {
+function TransactionRow({ t, context, onDelete }: any) {
   const isDebtContext = context === 'all_debt' || context === 'debt' || context === 'customers';
   
   let amountSign = '+';
@@ -1562,6 +1689,17 @@ Thank you!`;
         >
           <Share2 className="w-4 h-4" />
         </button>
+
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete && onDelete();
+          }}
+          className="p-3 bg-white/5 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-xl transition-all active:scale-90"
+          title="Delete Record"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
       </div>
     </div>
   );
@@ -1604,7 +1742,7 @@ function StoreItem({ title, description, cost, onBuy, disabled, purchased }: any
   );
 }
 
-function DayCard({ day }: { day: any }) {
+function DayCard({ day, onDelete }: { day: any, onDelete: (t: any) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   
   const dailyEarnings = (day.items || [])
@@ -1647,7 +1785,12 @@ function DayCard({ day }: { day: any }) {
           >
             <div className="p-4 space-y-2">
               {day.items.map((t: any, idx: number) => (
-                <TransactionRow key={idx} t={t} context="history" />
+                <TransactionRow 
+                  key={idx} 
+                  t={t} 
+                  context="history" 
+                  onDelete={() => onDelete(t)}
+                />
               ))}
             </div>
           </motion.div>

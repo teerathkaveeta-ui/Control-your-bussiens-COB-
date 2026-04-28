@@ -8,7 +8,7 @@ service cloud.firestore {
 
     // Phase 3: Primitive Definitions
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
     function isOwner(businessId) {
@@ -30,12 +30,10 @@ service cloud.firestore {
     // Entity Validations
     function isValidTransaction(data) {
       return data.keys().hasAll(['amount', 'type', 'timestamp']) &&
-             data.keys().size() <= 6 &&
-             data.amount is number && data.amount >= 0 &&
-             data.type in ['income', 'expense', 'debt', 'payment'] &&
-             (data.description == null || (data.description is string && data.description.size() <= 500)) &&
-             (data.customerName == null || (data.customerName is string && data.customerName.size() <= 100)) &&
-             (data.rawInput == null || (data.rawInput is string && data.rawInput.size() <= 1000));
+             data.amount is number &&
+             data.type is string &&
+             (data.customerName == null || data.customerName is string) &&
+             (data.description == null || data.description is string);
     }
 
     function isValidCustomer(data) {
@@ -63,7 +61,7 @@ service cloud.firestore {
     }
 
     function isValidShopSettings(data) {
-      return data.keys().size() <= 4 &&
+      return data.keys().size() <= 10 &&
              (data.shopOn == null || data.shopOn is bool) &&
              (data.lastSessionStart == null || data.lastSessionStart is number) &&
              (data.coins == null || data.coins is number) &&
@@ -105,8 +103,7 @@ service cloud.firestore {
       }
 
       match /settings/main {
-        allow get: if isOwner(businessId);
-        allow create, update: if isOwner(businessId) && isValidShopSettings(incoming());
+        allow get, write: if isOwner(businessId);
       }
     }
   }
