@@ -19,7 +19,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -30,22 +32,7 @@ jobs:
       - name: Install Dependencies
         run: |
           npm install --legacy-peer-deps
-          # Ensure capacitor is installed globally if needed, though npx should work
           npm install -g @capacitor/cli
-
-      - name: Build Web App
-        run: npm run build
-
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android Licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.5
 
       - name: Build Android APK
         env:
@@ -56,12 +43,11 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
-          # Locate the APK for the upload step
           mkdir -p ../dist-apk
-          cp app/build/outputs/apk/debug/app-debug.apk ../dist-apk/COB_v1.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../dist-apk/COB_Business_App.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: COB_Android_APK
-          path: dist-apk/COB_v1.0.apk
+          path: dist-apk/COB_Business_App.apk

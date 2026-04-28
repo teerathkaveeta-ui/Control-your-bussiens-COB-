@@ -716,9 +716,12 @@ function MainApp() {
       <main className="flex-1 lg:ml-72 p-4 lg:p-10 relative z-10 max-w-7xl mx-auto w-full pb-24 lg:pb-10">
         {/* Header - Mobile Only */}
         <header className="flex justify-between items-center mb-6 lg:hidden">
-          <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 glass rounded-xl">
-            <Menu className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 glass rounded-xl">
+              <Menu className="w-6 h-6" />
+            </button>
+            <Logo className="w-8 h-8" />
+          </div>
           <div className="flex items-center gap-3">
             {user && (
               <button 
@@ -769,15 +772,17 @@ function MainApp() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-yellow-500 mb-1">Cloud Backup: Band Hai</h3>
-                <p className="text-sm text-slate-400 max-w-sm">Apka sara hisab abhi sirf isi dukan (device) par hai. Link share karne ya mobile badalne ke liye humein Cloud (Firebase) se jorna hoga.</p>
+                <p className="text-sm text-slate-400 max-w-sm">Apka sara hisab abhi sirf isi dukan (device) par hai. Internet par save krne ke liye humein Cloud (Firebase) se jorna hoga taake mobile gum hone par bhi data mehfooz rahe.</p>
               </div>
             </div>
-            <button 
-              onClick={() => setAiResponse("Sain! Cloud Backup (Firebase) setting filhal band hai. Aap agent se kaho 'Set up Firebase' taake apka sara data mehfooz ho jaye.")}
-              className="w-full md:w-auto px-8 py-4 bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 rounded-2xl font-bold uppercase tracking-widest hover:bg-yellow-500/20 transition-all active:scale-95"
-            >
-              Info Lein
-            </button>
+            <div className="flex flex-col gap-2 w-full md:w-auto">
+              <button 
+                onClick={() => setAiResponse("Sain! Cloud Backup ka matlab hai ke apka sara data internet par Google ke servers (Firebase) par save hoga. Agar apka mobile gum ho jaye ya kharab ho jaye, toh naye mobile par login krte hi sara hisab wapis aa jaye ga. Isay activate krne ke liye 'Set up Firebase' kaho.")}
+                className="px-8 py-4 bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 rounded-2xl font-bold uppercase tracking-widest hover:bg-yellow-500/20 transition-all active:scale-95"
+              >
+                Ye Kya Hai?
+              </button>
+            </div>
           </motion.div>
         )}
 
