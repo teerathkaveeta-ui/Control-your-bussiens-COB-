@@ -38,7 +38,8 @@ import {
   Share2,
   MoreHorizontal,
   Edit2,
-  Bell
+  Bell,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
@@ -666,8 +667,8 @@ function MainApp() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans relative overflow-hidden flex flex-col lg:flex-row">
       {/* Background Mesh Gradients */}
-      <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/15 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/15 rounded-full blur-[120px] pointer-events-none"></div>
 
       {/* Sidebar - Desktop */}
       <nav className="hidden lg:flex w-72 glass border-r border-white/5 p-6 flex-col z-50 h-screen fixed">

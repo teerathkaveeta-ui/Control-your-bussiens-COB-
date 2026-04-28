@@ -130,6 +130,6 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     User Question: "${question}"`,
   });
 
-  return response.text || "Sain, abhi samajh nahi aaya, thora aur batayein.";
+  return response.text || "Sain, samajh nahi aaya. Thora saaf batayein (e.g., 'Ahmed ko 500 diye' ya '100 ka kharcha').";
 };
 

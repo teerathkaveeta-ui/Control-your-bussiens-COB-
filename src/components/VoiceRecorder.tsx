@@ -79,7 +79,7 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
         setIsRecording(false);
         
         if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-          setErrorMessage("Mic blocked! Please allow microphone access in your browser/phone settings.");
+          setErrorMessage("Mic block hai! Browser settings mein ja kar Microphone ko 'Allow' karein.");
         } else if (event.error === 'no-speech') {
           if (!accumulatedRef.current) {
             setErrorMessage("Aap bole nahi. Dobara koshish karein.");
