@@ -100,49 +100,25 @@ const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
     <div className="absolute inset-0 bg-emerald-400/5 blur-xl rounded-full animate-ping"></div>
 
     <svg 
-      viewBox="0 0 24 24" 
+      viewBox="0 0 40 40" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
-      className="w-full h-full relative z-10 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+      className="w-full h-full relative z-10"
     >
-      {/* Background Shape */}
-      <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
-      
-      {/* The Graph Path - Solid & Bold */}
+      <circle cx="20" cy="20" r="18" stroke="#10b981" strokeWidth="2" fill="none" className="text-emerald-500/20" />
       <path 
-        d="M4 18L9 12L13 16L20 7" 
+        d="M12 10C12 10 28 10 28 15C28 20 20 20 20 20C20 20 28 20 28 25C28 30 12 30 12 30" 
         stroke="#10b981" 
-        strokeWidth="3.5" 
+        strokeWidth="4" 
         strokeLinecap="round" 
-        strokeLinejoin="round" 
+        strokeLinejoin="round"
       />
-      
-      {/* Area under the graph - Semi-transparent fill */}
       <path 
-        d="M4 18L9 12L13 16L20 7V20H4V18Z" 
-        fill="url(#logo-gradient)" 
-        fillOpacity="0.2"
-      />
-
-      {/* Axis Lines */}
-      <path 
-        d="M3 21H21M3 3V21" 
-        stroke="white" 
-        strokeWidth="1.5" 
+        d="M12 20H20" 
+        stroke="#10b981" 
+        strokeWidth="4" 
         strokeLinecap="round" 
-        strokeOpacity="0.2"
       />
-
-      {/* Modern Circular Terminals */}
-      <circle cx="20" cy="7" r="2.5" fill="#10b981" />
-      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.3" />
-
-      <defs>
-        <linearGradient id="logo-gradient" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#10b981" />
-          <stop offset="1" stopColor="#10b981" stopOpacity="0" />
-        </linearGradient>
-      </defs>
     </svg>
   </div>
 );
@@ -835,8 +811,8 @@ function MainApp() {
                 title="Start a new session for today"
               >
                 <History className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Start Day</span>
-                <span className="sm:hidden">Start</span>
+                <span className="hidden sm:inline">End Session</span>
+                <span className="sm:hidden">Reset</span>
               </button>
             )}
             <Logo />
@@ -858,7 +834,7 @@ function MainApp() {
                   className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-slate-950 rounded-2xl text-sm font-bold uppercase tracking-widest hover:bg-emerald-400 transition-all shadow-xl shadow-emerald-500/20 active:scale-95 transform hover:-translate-y-0.5 group"
                 >
                   <History className="w-5 h-5 group-hover:rotate-[-45deg] transition-transform" />
-                  Start This Day Again
+                  End Session / New Day
                 </button>
              )}
           </div>

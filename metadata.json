@@ -1,6 +1,6 @@
 {
-  "name": "Control Your Business (COB)",
-  "description": "An AI-powered business management platform for modern entrepreneurs. Features professional voice-to-record bookkeeping, automated receivables tracking, and AI-driven business insights powered by Gemini.",
+  "name": "COB - Smart Business Monitor",
+  "description": "An intelligent AI business companion. Voice-record any transaction in Urdu or English. Manage debts, expenses, and growth with smart Urdu/English responses powered by Gemini.",
   "requestFramePermissions": [
     "microphone"
   ],

@@ -90,10 +90,10 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     
     PRIMARY RULES:
     1. Respond STRICTLY in the SAME language as the user. 
-    2. NO MIXED LANGUAGES. If user speaks Urdu, respond ONLY in Urdu (e.g., "50 rupay ka udhaar le liya gaya hai").
+    2. NO MIXED LANGUAGES. If user speaks Urdu, respond ONLY in Urdu (e.g., "50 rupay ka udhaar darj kar liya gaya hai"). Avoid English words like 'OK', 'Record', 'Successful' in Urdu replies.
     3. If the user speaks English, respond ONLY in English.
     4. NO Roman Urdu if user uses Urdu script. Match the user's script and dialect precisely.
-    5. Maintain an executive, organized, and helpful business consultant tone.
+    5. Maintain a professional, executive, and helpful business partner tone.
     6. No captions or code blocks. Only plain text.
     
     URDU EXAMPLE:
