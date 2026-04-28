@@ -2,54 +2,84 @@
   "entities": {
     "Transaction": {
       "title": "Transaction",
-      "description": "Represents a business financial record (income, expense, or debt).",
+      "description": "A business transaction record.",
       "type": "object",
       "properties": {
-        "amount": { "type": "number", "description": "The amount of money involved." },
-        "type": { "type": "string", "enum": ["income", "expense", "debt"], "description": "The type of transaction." },
-        "category": { "type": "string", "description": "e.g., Sales, Inventory, Rent, etc." },
-        "description": { "type": "string", "description": "Details of the transaction." },
-        "customerId": { "type": "string", "description": "Optional link to a customer (for debts)." },
-        "timestamp": { "type": "string", "format": "date-time", "description": "When the transaction occurred." },
-        "rawInput": { "type": "string", "description": "The transcription of the voice input that created this record." }
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["income", "expense", "debt", "payment"] },
+        "description": { "type": "string" },
+        "customerName": { "type": "string" },
+        "rawInput": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["amount", "type", "timestamp"]
     },
     "Customer": {
       "title": "Customer",
-      "description": "A person who does business with the shop.",
+      "description": "A customer profile with debt tracking.",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "description": "Full name of the customer." },
-        "phone": { "type": "string", "description": "WhatsApp or phone number." },
-        "totalDebt": { "type": "number", "description": "Current balance owed by the customer." }
+        "name": { "type": "string" },
+        "totalDebt": { "type": "number" },
+        "phone": { "type": "string" }
       },
-      "required": ["name"]
+      "required": ["name", "totalDebt"]
     },
-    "BusinessMemory": {
-      "title": "Business Memory",
-      "description": "AI-generated summaries or notes about the business state.",
+    "Product": {
+      "title": "Product",
+      "description": "A product in the shop's rate list.",
       "type": "object",
       "properties": {
-        "content": { "type": "string", "description": "The memory content or summary." },
-        "date": { "type": "string", "format": "date", "description": "The date this summary refers to." },
-        "type": { "type": "string", "enum": ["daily_summary", "critical_alert", "general_note"] }
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" }
       },
-      "required": ["content", "date", "type"]
+      "required": ["name", "price"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A system or AI generated notification.",
+      "type": "object",
+      "properties": {
+        "item": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "rawTranscript": { "type": "string" }
+      },
+      "required": ["message", "timestamp"]
+    },
+    "ShopSettings": {
+      "title": "Shop Settings",
+      "description": "Configuration and state for the shop.",
+      "type": "object",
+      "properties": {
+        "shopOn": { "type": "boolean" },
+        "lastSessionStart": { "type": "number" },
+        "coins": { "type": "number" },
+        "shopSize": { "type": "string" }
+      }
     }
   },
   "firestore": {
     "/businesses/{businessId}/transactions/{transactionId}": {
       "schema": "Transaction",
-      "description": "List of all financial transactions for a business."
+      "description": "Collection of transactions for a business."
     },
     "/businesses/{businessId}/customers/{customerId}": {
       "schema": "Customer",
-      "description": "List of customers and their credit status."
+      "description": "Collection of customers for a business."
     },
-    "/businesses/{businessId}/memories/{memoryId}": {
-      "schema": "BusinessMemory",
-      "description": "AI's long-term memory about the business."
+    "/businesses/{businessId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Rate list products."
+    },
+    "/businesses/{businessId}/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Notifications for the business owner."
+    },
+    "/businesses/{businessId}/settings/main": {
+      "schema": "ShopSettings",
+      "description": "Main settings and status document."
     }
   }
 }

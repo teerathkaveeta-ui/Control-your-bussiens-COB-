@@ -7,7 +7,13 @@ import {
   updateCustomerDebt,
   getCustomers,
   setShopStatus,
-  getShopData
+  getShopData,
+  getProducts,
+  addProduct,
+  updateProduct,
+  getNotifications,
+  addNotification,
+  syncToCloud
 } from './services/firebase';
 import { parseBusinessInput, answerBusinessQuestion } from './services/gemini';
 import VoiceRecorder from './components/VoiceRecorder';
@@ -169,66 +175,55 @@ function MainApp() {
       const custList = await getCustomers(uid);
       setCustomers(Array.isArray(custList) ? custList : []);
       
-      // Load products too
-      const p = localStorage.getItem(`products_${uid}`);
-      if (p) {
-        try {
-          const parsedP = JSON.parse(p);
-          if (Array.isArray(parsedP)) setProducts(parsedP);
-        } catch (e) {
-          console.error("Products parse error", e);
-        }
+      const shopData = await getShopData();
+      if (shopData) {
+        setShopOn(shopData.shopOn);
+        setLastSessionStart(shopData.lastSessionStart);
+        setCoins(shopData.coins);
+        setShopSize(shopData.shopSize);
       }
+      const p = await getProducts(uid);
+      if (p) setProducts(p);
       
-      const n = localStorage.getItem(`notifications_${uid}`);
-      if (n) {
-        try {
-          const parsedN = JSON.parse(n);
-          if (Array.isArray(parsedN)) setNotifications(parsedN);
-        } catch (e) {
-          console.error("Notifications parse error", e);
-        }
-      }
+      const n = await getNotifications(uid);
+      if (n) setNotifications(n);
 
-      const c = localStorage.getItem(`coins_${uid}`);
-      if (c) {
-        const parsedC = parseInt(c);
-        if (!isNaN(parsedC)) setCoins(parsedC);
-      }
-
-      const s = localStorage.getItem(`shopSize_${uid}`);
-      if (s) setShopSize(s);
     } catch (err) {
       console.error("Failed to load data:", err);
       setTransactions([]);
     }
   }
 
-  // Persist products and notifications to localstorage (since getRecentTransactions handles db for now)
+  // Persist coins and shopSize to cloud when they change
   useEffect(() => {
     if (user) {
-      localStorage.setItem(`products_${user.uid}`, JSON.stringify(products));
+      syncToCloud(user.uid, 'coins', coins);
+      syncToCloud(user.uid, 'shopSize', shopSize);
     }
-  }, [products, user]);
+  }, [coins, shopSize, user]);
 
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem(`notifications_${user.uid}`, JSON.stringify(notifications));
-      localStorage.setItem(`coins_${user.uid}`, coins.toString());
-      localStorage.setItem(`shopSize_${user.uid}`, shopSize);
-    }
-  }, [notifications, coins, shopSize, user]);
-
-  const saveProduct = () => {
+  const saveProduct = async () => {
     if (newProduct.name && newProduct.price) {
-      if (editingProduct) {
-        setProducts(products.map(p => p.id === editingProduct.id ? { ...newProduct, id: p.id } : p));
-        setEditingProduct(null);
-      } else {
-        setProducts([{ ...newProduct, id: Date.now() }, ...products]);
+      if (user) {
+        if (editingProduct) {
+          await updateProduct(user.uid, editingProduct.id, { 
+            name: newProduct.name, 
+            description: newProduct.description, 
+            price: parseFloat(newProduct.price) 
+          });
+          setProducts(products.map(p => p.id === editingProduct.id ? { ...newProduct, id: p.id, price: parseFloat(newProduct.price) } : p));
+          setEditingProduct(null);
+        } else {
+          const docRef: any = await addProduct(user.uid, { 
+            name: newProduct.name, 
+            description: newProduct.description, 
+            price: parseFloat(newProduct.price) 
+          });
+          setProducts([{ ...newProduct, id: docRef.id, price: parseFloat(newProduct.price) }, ...products]);
+        }
+        setNewProduct({ name: '', description: '', price: '' });
+        setShowProductForm(false);
       }
-      setNewProduct({ name: '', description: '', price: '' });
-      setShowProductForm(false);
     }
   };
 
@@ -538,13 +533,13 @@ function MainApp() {
            const itemName = match ? match[2] : "Unknown Item";
            
            if (!notifications.some(n => n.item === itemName)) {
-             setNotifications([{
-               id: Date.now(),
+             const newNotif = {
                item: itemName,
                message: `Sain! "${itemName}" rate list mein nahi mila. Kya add karu?`,
-               timestamp: new Date().toISOString(),
                rawTranscript: transcript
-             }, ...notifications]);
+             };
+             if (user) addNotification(user.uid, newNotif);
+             setNotifications([{ ...newNotif, id: Date.now(), timestamp: new Date().toISOString() }, ...notifications]);
            }
         }
 
@@ -759,29 +754,21 @@ function MainApp() {
           </div>
         </section>
 
-        {/* Cloud Sync Warning for Simulated Mode */}
+        {/* Data Sync Status */}
         {user && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-12 glass rounded-3xl border border-yellow-500/20 p-6 flex flex-col md:flex-row items-center justify-between gap-6"
+            className="mb-12 glass rounded-3xl border border-emerald-500/20 p-6 flex flex-col md:flex-row items-center justify-between gap-6"
           >
             <div className="flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-yellow-500/10 flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-yellow-500 mb-1">Cloud Backup: Band Hai</h3>
-                <p className="text-sm text-slate-400 max-w-sm">Apka sara hisab abhi sirf isi dukan (device) par hai. Internet par save krne ke liye humein Cloud (Firebase) se jorna hoga taake mobile gum hone par bhi data mehfooz rahe.</p>
+                <h3 className="text-xl font-bold text-emerald-500 mb-1">Cloud Backup: ON</h3>
+                <p className="text-sm text-slate-400 max-w-sm">Apka sara hisab Google Cloud (Firebase) par mehfooz ho raha hai. Kisi bhi mobile par login krte hi data wapis aa jaye ga.</p>
               </div>
-            </div>
-            <div className="flex flex-col gap-2 w-full md:w-auto">
-              <button 
-                onClick={() => setAiResponse("Sain! Cloud Backup ka matlab hai ke apka sara data internet par Google ke servers (Firebase) par save hoga. Agar apka mobile gum ho jaye ya kharab ho jaye, toh naye mobile par login krte hi sara hisab wapis aa jaye ga. Isay activate krne ke liye 'Set up Firebase' kaho.")}
-                className="px-8 py-4 bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 rounded-2xl font-bold uppercase tracking-widest hover:bg-yellow-500/20 transition-all active:scale-95"
-              >
-                Ye Kya Hai?
-              </button>
             </div>
           </motion.div>
         )}

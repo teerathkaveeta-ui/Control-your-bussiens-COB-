@@ -1,53 +1,93 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, getDocs, orderBy, limit, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
-
-const firebaseConfig = {
-  apiKey: "placeholder",
-  authDomain: "placeholder",
-  projectId: "placeholder",
-  storageBucket: "placeholder",
-  messagingSenderId: "placeholder",
-  appId: "placeholder",
-  firestoreDatabaseId: "(default)"
-};
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  getDocs, 
+  orderBy, 
+  limit, 
+  serverTimestamp, 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  setDoc,
+  getDocFromServer
+} from 'firebase/firestore';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-const realAuth = getAuth(app);
-export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 const googleProvider = new GoogleAuthProvider();
 
-// Simulation mode for when Firebase is not yet configured
-const isSimulated = true;
+// Error handling logic as per instructions
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
 
-export const auth: any = isSimulated ? {
-  onAuthStateChanged: (cb: any) => {
-    const stored = localStorage.getItem('user');
-    cb(stored ? JSON.parse(stored) : null);
-    return () => {};
-  },
-  signOut: async () => {
-    localStorage.removeItem('user');
-    window.location.reload();
-  },
-  currentUser: JSON.parse(localStorage.getItem('user') || 'null')
-} : realAuth;
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// CRITICAL: Validate connection to Firestore on boot
+async function testConnection() {
+  try {
+    const testDoc = doc(db, 'test', 'connection');
+    await getDocFromServer(testDoc);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+    }
+  }
+}
+testConnection();
 
 export const loginWithGoogle = async () => {
-  if (isSimulated) {
-    const dummyUser = {
-      uid: 'shopkeeper123',
-      displayName: 'Apna Store Owner',
-      email: 'owner@apnastore.pk',
-      photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=shop'
-    };
-    localStorage.setItem('user', JSON.stringify(dummyUser));
-    window.location.reload(); // To trigger auth state change
-    return dummyUser;
-  }
   try {
-    const result = await signInWithPopup(realAuth, googleProvider);
+    const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (error) {
     console.error("Login failed:", error);
@@ -56,91 +96,158 @@ export const loginWithGoogle = async () => {
 };
 
 export const addTransaction = async (businessId: string, data: any) => {
-  if (isSimulated) {
-    const transactions = JSON.parse(localStorage.getItem('transactions') || '[]');
-    const newT = { id: Math.random().toString(36).substr(2, 9), ...data, timestamp: { seconds: Math.floor(Date.now() / 1000) } };
-    transactions.push(newT);
-    localStorage.setItem('transactions', JSON.stringify(transactions));
-    return newT;
+  const path = `businesses/${businessId}/transactions`;
+  try {
+    const colRef = collection(db, path);
+    return await addDoc(colRef, {
+      ...data,
+      timestamp: serverTimestamp()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
-  const colRef = collection(db, 'businesses', businessId, 'transactions');
-  return await addDoc(colRef, {
-    ...data,
-    timestamp: serverTimestamp()
-  });
 };
 
 export const getRecentTransactions = async (businessId: string, limitCount = 20) => {
-  if (isSimulated) {
-    try {
-      const transactions = JSON.parse(localStorage.getItem('transactions') || '[]');
-      if (!Array.isArray(transactions)) return [];
-      
-      return transactions
-        .sort((a: any, b: any) => {
-          const timeA = a.timestamp?.seconds || 0;
-          const timeB = b.timestamp?.seconds || 0;
-          return timeB - timeA;
-        })
-        .slice(0, limitCount);
-    } catch (e) {
-      console.error("Local transactions parse error:", e);
-      return [];
-    }
+  const path = `businesses/${businessId}/transactions`;
+  try {
+    const colRef = collection(db, path);
+    const q = query(colRef, orderBy('timestamp', 'desc'), limit(limitCount));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
   }
-  const colRef = collection(db, 'businesses', businessId, 'transactions');
-  const q = query(colRef, orderBy('timestamp', 'desc'), limit(limitCount));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 export const updateCustomerDebt = async (businessId: string, customerName: string, amount: number, phone?: string | null) => {
-  if (isSimulated) {
-     const customers = JSON.parse(localStorage.getItem('customers') || '{}');
-     if (!customers[customerName]) customers[customerName] = { name: customerName, totalDebt: 0, phone: phone || null };
-     customers[customerName].totalDebt += amount;
-     if (phone) customers[customerName].phone = phone;
-     localStorage.setItem('customers', JSON.stringify(customers));
-     return;
-  }
-  const colRef = collection(db, 'businesses', businessId, 'customers');
-  const q = query(colRef, where('name', '==', customerName));
-  const snapshot = await getDocs(q);
-  
-  if (snapshot.empty) {
-    return await addDoc(colRef, { name: customerName, totalDebt: amount, phone: phone || null });
-  } else {
-    const customerDoc = snapshot.docs[0];
-    const newDebt = (customerDoc.data().totalDebt || 0) + amount;
-    const updateData: any = { totalDebt: newDebt };
-    if (phone) updateData.phone = phone;
-    return await updateDoc(doc(db, 'businesses', businessId, 'customers', customerDoc.id), updateData);
+  const path = `businesses/${businessId}/customers`;
+  try {
+    const colRef = collection(db, path);
+    const q = query(colRef, where('name', '==', customerName));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      return await addDoc(colRef, { name: customerName, totalDebt: amount, phone: phone || null });
+    } else {
+      const customerDoc = snapshot.docs[0];
+      const newDebt = (customerDoc.data().totalDebt || 0) + amount;
+      const updateData: any = { totalDebt: newDebt };
+      if (phone) updateData.phone = phone;
+      const docPath = `${path}/${customerDoc.id}`;
+      return await updateDoc(doc(db, docPath), updateData);
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 };
 
 export const getCustomers = async (businessId: string) => {
-  if (isSimulated) {
-    const customers = JSON.parse(localStorage.getItem('customers') || '{}');
-    return Object.values(customers);
+  const path = `businesses/${businessId}/customers`;
+  try {
+    const colRef = collection(db, path);
+    const snapshot = await getDocs(colRef);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
   }
-  const colRef = collection(db, 'businesses', businessId, 'customers');
-  const snapshot = await getDocs(colRef);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 export const setShopStatus = async (isOn: boolean) => {
-  if (isSimulated) {
-    localStorage.setItem('shopOn', JSON.stringify(isOn));
-    if (isOn) localStorage.setItem('lastSessionStart', Date.now().toString());
-    return;
+  const businessId = auth.currentUser?.uid;
+  if (!businessId) return;
+  const path = `businesses/${businessId}/settings/main`;
+  try {
+    const docRef = doc(db, path);
+    await setDoc(docRef, { shopOn: isOn, lastSessionStart: isOn ? Date.now() : null }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 };
 
 export const getShopData = async () => {
-  if (isSimulated) {
-    const shopOn = JSON.parse(localStorage.getItem('shopOn') || 'false');
-    const lastSessionStart = localStorage.getItem('lastSessionStart');
-    return { shopOn, lastSessionStart: lastSessionStart ? parseInt(lastSessionStart) : null };
+  const businessId = auth.currentUser?.uid;
+  if (!businessId) return { shopOn: false, lastSessionStart: null };
+  const path = `businesses/${businessId}/settings/main`;
+  try {
+    const docRef = doc(db, path);
+    const snapshot = await getDoc(docRef);
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      return { 
+        shopOn: data.shopOn || false, 
+        lastSessionStart: data.lastSessionStart || null,
+        coins: data.coins || 1500,
+        shopSize: data.shopSize || 'Small'
+      };
+    }
+    return { shopOn: false, lastSessionStart: null, coins: 1500, shopSize: 'Small' };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
   }
-  return { shopOn: false, lastSessionStart: null };
 };
+
+// Additional sync helpers for products, notifications, etc.
+export const getProducts = async (businessId: string) => {
+  const path = `businesses/${businessId}/products`;
+  try {
+    const colRef = collection(db, path);
+    const snapshot = await getDocs(colRef);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+};
+
+export const addProduct = async (businessId: string, product: any) => {
+  const path = `businesses/${businessId}/products`;
+  try {
+    const colRef = collection(db, path);
+    return await addDoc(colRef, product);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+
+export const updateProduct = async (businessId: string, productId: string, product: any) => {
+  const path = `businesses/${businessId}/products/${productId}`;
+  try {
+    const docRef = doc(db, path);
+    await updateDoc(docRef, product);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+
+export const getNotifications = async (businessId: string) => {
+  const path = `businesses/${businessId}/notifications`;
+  try {
+    const colRef = collection(db, path);
+    const q = query(colRef, orderBy('timestamp', 'desc'), limit(50));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+};
+
+export const addNotification = async (businessId: string, notification: any) => {
+  const path = `businesses/${businessId}/notifications`;
+  try {
+    const colRef = collection(db, path);
+    return await addDoc(colRef, { ...notification, timestamp: serverTimestamp() });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+
+export const syncToCloud = async (businessId: string, key: string, data: any) => {
+  const path = `businesses/${businessId}/settings/main`;
+  try {
+    const docRef = doc(db, path);
+    await setDoc(docRef, { [key]: data }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+

@@ -6,71 +6,107 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 1. Helpers
+    // Phase 3: Primitive Definitions
     function isSignedIn() {
       return request.auth != null;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function isOwner(businessId) {
       return isSignedIn() && request.auth.uid == businessId;
     }
 
-    // 2. Validation Blueprints
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity Validations
     function isValidTransaction(data) {
       return data.keys().hasAll(['amount', 'type', 'timestamp']) &&
+             data.keys().size() <= 6 &&
              data.amount is number && data.amount >= 0 &&
              data.type in ['income', 'expense', 'debt', 'payment'] &&
-             data.timestamp == request.time &&
-             (data.get('description', '') is string && data.get('description', '').size() <= 1000) &&
-             (data.get('rawInput', '') is string && data.get('rawInput', '').size() <= 2000);
+             (data.description == null || (data.description is string && data.description.size() <= 500)) &&
+             (data.customerName == null || (data.customerName is string && data.customerName.size() <= 100)) &&
+             (data.rawInput == null || (data.rawInput is string && data.rawInput.size() <= 1000));
     }
 
     function isValidCustomer(data) {
-      return data.keys().hasAll(['name']) &&
+      return data.keys().hasAll(['name', 'totalDebt']) &&
+             data.keys().size() <= 3 &&
              data.name is string && data.name.size() <= 100 &&
-             (data.get('phone', '') is string && data.get('phone', '').size() <= 20) &&
-             (data.get('totalDebt', 0) is number);
+             data.totalDebt is number &&
+             (data.phone == null || (data.phone is string && data.phone.size() <= 20));
     }
 
-    function isValidMemory(data) {
-      return data.keys().hasAll(['content', 'date', 'type']) &&
-             data.content is string && data.content.size() <= 5000 &&
-             data.date is string &&
-             data.type in ['daily_summary', 'critical_alert', 'general_note'];
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'price']) &&
+             data.keys().size() <= 3 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             (data.description == null || (data.description is string && data.description.size() <= 500));
     }
 
-    // 3. Collection Rules
+    function isValidNotification(data) {
+      return data.keys().hasAll(['message', 'timestamp']) &&
+             data.keys().size() <= 5 &&
+             data.message is string && data.message.size() <= 1000 &&
+             (data.item == null || (data.item is string && data.item.size() <= 100)) &&
+             (data.rawTranscript == null || (data.rawTranscript is string && data.rawTranscript.size() <= 1000));
+    }
+
+    function isValidShopSettings(data) {
+      return data.keys().size() <= 4 &&
+             (data.shopOn == null || data.shopOn is bool) &&
+             (data.lastSessionStart == null || data.lastSessionStart is number) &&
+             (data.coins == null || data.coins is number) &&
+             (data.shopSize == null || data.shopSize is string);
+    }
+
     match /businesses/{businessId} {
-      allow read: if isOwner(businessId);
-      allow create: if isOwner(businessId);
+      allow get: if isOwner(businessId);
       
       match /transactions/{transactionId} {
-        allow get: if isOwner(businessId) && isValidId(transactionId);
         allow list: if isOwner(businessId);
-        allow create: if isOwner(businessId) && isValidId(transactionId) && isValidTransaction(request.resource.data);
-        allow update: if false; // Transactions are usually immutable for integrity
-        allow delete: if isOwner(businessId) && isValidId(transactionId);
+        allow get: if isOwner(businessId) && isValidId(transactionId);
+        allow create: if isOwner(businessId) && isValidId(transactionId) && isValidTransaction(incoming());
+        allow update: if isOwner(businessId) && isValidId(transactionId) && isValidTransaction(incoming()) && 
+                         incoming().diff(existing()).affectedKeys().hasOnly(['description', 'customerName']);
+        allow delete: if isOwner(businessId);
       }
 
       match /customers/{customerId} {
-        allow get: if isOwner(businessId) && isValidId(customerId);
         allow list: if isOwner(businessId);
-        allow create: if isOwner(businessId) && isValidId(customerId) && isValidCustomer(request.resource.data);
-        allow update: if isOwner(businessId) && isValidId(customerId) && 
-                         isValidCustomer(request.resource.data) &&
-                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalDebt', 'phone', 'name']);
-        allow delete: if isOwner(businessId) && isValidId(customerId);
+        allow get: if isOwner(businessId) && isValidId(customerId);
+        allow create: if isOwner(businessId) && isValidId(customerId) && isValidCustomer(incoming());
+        allow update: if isOwner(businessId) && isValidId(customerId) && isValidCustomer(incoming());
+        allow delete: if isOwner(businessId);
       }
 
-      match /memories/{memoryId} {
-        allow get: if isOwner(businessId) && isValidId(memoryId);
+      match /products/{productId} {
         allow list: if isOwner(businessId);
-        allow create: if isOwner(businessId) && isValidId(memoryId) && isValidMemory(request.resource.data);
-        allow delete: if isOwner(businessId) && isValidId(memoryId);
+        allow get: if isOwner(businessId) && isValidId(productId);
+        allow create: if isOwner(businessId) && isValidId(productId) && isValidProduct(incoming());
+        allow update: if isOwner(businessId) && isValidId(productId) && isValidProduct(incoming());
+        allow delete: if isOwner(businessId);
+      }
+
+      match /notifications/{notificationId} {
+        allow list: if isOwner(businessId);
+        allow create: if isOwner(businessId) && isValidId(notificationId) && isValidNotification(incoming());
+        allow delete: if isOwner(businessId);
+      }
+
+      match /settings/main {
+        allow get: if isOwner(businessId);
+        allow create, update: if isOwner(businessId) && isValidShopSettings(incoming());
       }
     }
   }
