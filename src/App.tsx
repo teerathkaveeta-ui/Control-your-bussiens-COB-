@@ -100,25 +100,49 @@ const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
     <div className="absolute inset-0 bg-emerald-400/5 blur-xl rounded-full animate-ping"></div>
 
     <svg 
-      viewBox="0 0 40 40" 
+      viewBox="0 0 24 24" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
-      className="w-full h-full relative z-10"
+      className="w-full h-full relative z-10 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
     >
-      <circle cx="20" cy="20" r="18" stroke="#10b981" strokeWidth="2" fill="none" className="text-emerald-500/20" />
+      {/* Background Shape */}
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
+      
+      {/* The Graph Path - Solid & Bold */}
       <path 
-        d="M12 10C12 10 28 10 28 15C28 20 20 20 20 20C20 20 28 20 28 25C28 30 12 30 12 30" 
+        d="M4 18L9 12L13 16L20 7" 
         stroke="#10b981" 
-        strokeWidth="4" 
+        strokeWidth="3.5" 
         strokeLinecap="round" 
-        strokeLinejoin="round"
+        strokeLinejoin="round" 
       />
+      
+      {/* Area under the graph - Semi-transparent fill */}
       <path 
-        d="M12 20H20" 
-        stroke="#10b981" 
-        strokeWidth="4" 
-        strokeLinecap="round" 
+        d="M4 18L9 12L13 16L20 7V20H4V18Z" 
+        fill="url(#logo-gradient)" 
+        fillOpacity="0.2"
       />
+
+      {/* Axis Lines */}
+      <path 
+        d="M3 21H21M3 3V21" 
+        stroke="white" 
+        strokeWidth="1.5" 
+        strokeLinecap="round" 
+        strokeOpacity="0.2"
+      />
+
+      {/* Modern Circular Terminals */}
+      <circle cx="20" cy="7" r="2.5" fill="#10b981" />
+      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.3" />
+
+      <defs>
+        <linearGradient id="logo-gradient" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#10b981" />
+          <stop offset="1" stopColor="#10b981" stopOpacity="0" />
+        </linearGradient>
+      </defs>
     </svg>
   </div>
 );
@@ -331,7 +355,7 @@ function MainApp() {
       localStorage.removeItem('lastSessionStart');
     }
 
-    const msg = newState ? "Session started. Wishing you a profitable day!" : "Session ended. Records are securely saved.";
+    const msg = newState ? "Silsila shuru. Allah barkat de!" : "Silsila khatam. Tamam record mehfooz hain.";
     setAiResponse(msg);
     speak(msg);
   };
@@ -366,7 +390,7 @@ function MainApp() {
   };
 
   const resetDay = async () => {
-    const confirmed = window.confirm("Are you sure you want to start a new session? This will clear today's activities from your dashboard view and save them to history.");
+    const confirmed = window.confirm("Kya aap naya session shuru karna chahte hain? Aaj ki sargarmian history mein mehfooz ho jayengi.");
     if (!confirmed) return;
 
     const now = Date.now();
@@ -1097,14 +1121,6 @@ function MainApp() {
                   {activeStatFilter ? 'Specific Records' : 'Database Sync: Online'}
                 </p>
               </div>
-              
-              <button 
-                onClick={() => setShowManualForm(!showManualForm)}
-                className="w-10 h-10 bg-emerald-500 text-slate-950 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20 active:scale-90 transition-all"
-                title="Add Record"
-              >
-                <Plus className="w-6 h-6" />
-              </button>
             </div>
           </div>
           
