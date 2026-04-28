@@ -4,23 +4,24 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const parseBusinessInput = async (input: string) => {
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `You are an AI business partner named COB. 
     Analyze the following input from a shopkeeper. 
     The shopkeeper can either be RECORDING something (income, expense, debt) or ASKING A QUESTION about their business history.
     
     SUPPORTED LANGUAGES: 
-    - The user can speak in ROMAN URDU, URDU (script), HINDI, ENGLISH, or any mix of these (e.g., "Mera five hundred ka kharcha hua", "100 rupees income").
-    - DO NOT assume pure Urdu. Understand the INTENT regardless of the language or dialect used.
+    - The user can speak in ROMAN URDU (e.g., "Mera 500 ka sale hua", "Ahmed ke 200 baqi"), URDU script, HINDI, ENGLISH, or a mix.
+    - "Jama" can mean Income (Sale) OR Payment (returning debt). Use context. 
+    - If a person's name is mentioned with "Jama" or "diye", it's usually a PAYMENT.
     
     Category Mapping:
-    - INCOME (Sale/Kamai/Jama/Kamai/Sale): Money coming in from sales.
-    - EXPENSE (Kharcha/Expense/Lagat/Kharch): Money paid out for supplies, bills, etc.
-    - DEBT (Udhaar/Udhari/Baqi/Baqiya/Credit): Items/money given to a customer on credit (customer owes you).
-    - PAYMENT (Udhar Wapsi/Jama/Paisa mil gaya/Payment): When a customer pays back their existing debt.
+    - INCOME (Sale/Kamai/Jama/Bikri/Income): Money from selling goods.
+    - EXPENSE (Kharcha/Expense/Bijli Bill/Rent): Money going out.
+    - DEBT (Udhaar/Udhari/Baqi/Baqiya/Credit/Khata): Customer owes YOU money now.
+    - PAYMENT (Udhar Wapsi/Paisa mil gaya/Wapis diye/Hisab chukaya): Customer is paying back their debt.
     
     NUMBER DETECTION:
-    - Support digits (100, 500) and written numbers in English (five hundred, thousand), Roman Urdu (sau, hazaar, bees), or Urdu script (سو, ہزار).
+    - Support digits (100, 500) and written numbers (five hundred, sau, hazaar, ek sau bees).
     
     STRICT RULE: If the user says a single number like "100", "₹500", or "five hundred", treat it as an RECORDING of "income" with description "Sale".
     
@@ -83,7 +84,7 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     : "No product rate list available.";
 
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `You are a helpful business assistant named COB (Control Our Business). 
     The user can speak in any language (Urdu, Hindi, English, etc). 
     
@@ -131,3 +132,4 @@ export const answerBusinessQuestion = async (question: string, context: string, 
 
   return response.text || "Sain, abhi samajh nahi aaya, thora aur batayein.";
 };
+

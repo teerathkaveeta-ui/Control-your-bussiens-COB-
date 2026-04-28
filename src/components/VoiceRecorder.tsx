@@ -23,123 +23,130 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
   const recognitionRef = React.useRef<any>(null);
   const isStartingRef = React.useRef(false);
 
-  // Re-initialize recognition
+  // Initialize recognition
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setErrorMessage("Voice support missing.");
+      setErrorMessage("Voice support missing in this browser.");
       return;
     }
     
-    // Stop and clear old instance if exists
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e) {}
-      recognitionRef.current = null;
-    }
+    const initRecognition = () => {
+      // Stop and clear old instance if exists
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e) {}
+        recognitionRef.current = null;
+      }
 
-    const recognitionInstance = new SpeechRecognition();
-    recognitionInstance.continuous = true;
-    recognitionInstance.interimResults = true;
-    // Fallback language chain: Hindi/India is best for Roman Urdu comprehension
-    recognitionInstance.lang = 'hi-IN'; 
+      const recognitionInstance = new SpeechRecognition();
+      recognitionInstance.continuous = true;
+      recognitionInstance.interimResults = true;
+      
+      // We try Urdu first, then fallback to English if the browser is confused
+      recognitionInstance.lang = 'ur-PK'; 
 
-    recognitionInstance.onstart = () => {
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      isStartingRef.current = false;
-      setErrorMessage(null);
-      console.log("Mic turned on. Aap bol sakte hain.");
-    };
+      recognitionInstance.onstart = () => {
+        isRecordingRef.current = true;
+        setIsRecording(true);
+        isStartingRef.current = false;
+        setErrorMessage(null);
+        console.log("Mic turned on. Aap bol sakte hain.");
+      };
 
-    recognitionInstance.onresult = (event: any) => {
-      let final = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          final += result[0].transcript + ' ';
+      recognitionInstance.onresult = (event: any) => {
+        let final = '';
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            final += result[0].transcript + ' ';
+          } else {
+            interim += result[0].transcript;
+          }
         }
-      }
-      if (final) {
-        accumulatedRef.current += final;
-      }
-    };
+        if (final) {
+          accumulatedRef.current += final;
+        }
+        interimRef.current = interim;
+      };
 
-    recognitionInstance.onerror = (event: any) => {
-      console.error("Mic error:", event.error);
-      if (event.error === 'aborted') return;
-      
-      isStartingRef.current = false;
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      
-      if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-        setErrorMessage("Mic blocked! Please allow microphone access in settings.");
-      } else if (event.error === 'no-speech') {
-        setErrorMessage("Aap bole nahi. Dobara koshish karein.");
-      } else {
-        setErrorMessage("Masla: " + event.error + ". Refresh karein.");
-      }
-    };
+      recognitionInstance.onerror = (event: any) => {
+        console.error("Mic error:", event.error);
+        if (event.error === 'aborted') return;
+        
+        isStartingRef.current = false;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        
+        if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+          setErrorMessage("Mic blocked! Please allow microphone access in your browser/phone settings.");
+        } else if (event.error === 'no-speech') {
+          if (!accumulatedRef.current) {
+            setErrorMessage("Aap bole nahi. Dobara koshish karein.");
+          }
+        } else if (event.error === 'network') {
+          setErrorMessage("Internet masla hai. Please connect karein.");
+        } else {
+          setErrorMessage("Masla: " + event.error + ". Refresh karein.");
+        }
+      };
 
-    recognitionInstance.onend = () => {
-      console.log("Recognition ended.");
-      const wasActuallyRecording = isRecordingRef.current;
-      
-      setIsRecording(false);
-      isRecordingRef.current = false;
-      isStartingRef.current = false;
+      recognitionInstance.onend = () => {
+        console.log("Recognition ended.");
+        const wasActuallyRecording = isRecordingRef.current;
+        
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        isStartingRef.current = false;
 
-      if (wasActuallyRecording) {
         const finalFull = (accumulatedRef.current + ' ' + interimRef.current).trim();
-        if (finalFull) {
+        if (finalFull && wasActuallyRecording) {
           onTranscriptRef.current(finalFull);
         }
+        
         accumulatedRef.current = '';
         interimRef.current = '';
-      }
+      };
+
+      recognitionRef.current = recognitionInstance;
+      setRecognition(recognitionInstance);
     };
 
-    recognitionRef.current = recognitionInstance;
-    setRecognition(recognitionInstance);
+    initRecognition();
   }, []);
 
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (isProcessing) return;
     
     if (isRecordingRef.current) {
       console.log("Stopping recording manually...");
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      isStartingRef.current = false;
       try {
         recognition?.stop();
-        // Use timeout to ensure state has updated from final result
-        setTimeout(() => {
-          const finalFull = (accumulatedRef.current + ' ' + interimRef.current).trim();
-          if (finalFull) {
-            onTranscriptRef.current(finalFull);
-          }
-          accumulatedRef.current = '';
-          interimRef.current = '';
-        }, 300);
       } catch (e) {
         console.error("Stop failed:", e);
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        isStartingRef.current = false;
       }
     } else {
       if (!recognition) {
-        setErrorMessage("Restart the app please.");
+        setErrorMessage("Please refresh the page.");
         return;
       }
       if (isStartingRef.current || isProcessing) return;
       
       try {
+        // Clear previous state
         accumulatedRef.current = '';
         interimRef.current = '';
         setErrorMessage(null);
         isStartingRef.current = true;
         isRecordingRef.current = true;
+        
+        // Attempt to start - this will trigger permission prompt if first time
         recognition.start();
       } catch (err) {
+        console.error("Start failed:", err);
         isStartingRef.current = false;
         isRecordingRef.current = false;
         setIsRecording(false);

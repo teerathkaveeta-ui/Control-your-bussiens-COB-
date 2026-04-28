@@ -137,6 +137,14 @@ function MainApp() {
     }
   }, [transcriptQueue, isProcessing]);
 
+  // Manual refresh helper
+  const refreshData = async () => {
+    if (user) {
+      await loadData(user.uid);
+      setAiResponse("Hisab refresh ho gaya hai.");
+    }
+  };
+
   async function loadData(uid: string) {
     try {
       // Limit to 1500 roughly (approx 150 days * 10 transactions/day)
@@ -354,7 +362,7 @@ function MainApp() {
       console.log("Skipping empty transcript");
       return;
     }
-    
+
     setIsProcessing(true);
     setLastTranscript(transcript);
     console.log("Processing transcript:", transcript);
@@ -388,9 +396,30 @@ function MainApp() {
       }
 
       console.log("Calling parseBusinessInput...");
-      const result = await parseBusinessInput(transcript);
+      let result;
+      try {
+        result = await parseBusinessInput(transcript);
+        console.log("Gemini parsed result:", result);
+      } catch (parseError: any) {
+        console.error("Gemini parse failed:", parseError);
+        // Direct regex attempt if API call itself failed
+        const nums = transcript.match(/(\d+)/g);
+        if (nums && nums.length > 0) {
+          result = { 
+            intent: "record", 
+            actions: [{ 
+              amount: parseInt(nums[0], 10), 
+              type: "income", 
+              description: "Sale (Auto-detected)" 
+            }] 
+          };
+        } else {
+          throw parseError; // Re-throw if no numbers found either
+        }
+      }
+      
       clearTimeout(processingTimeout);
-      console.log("Result from parser:", result);
+      clearTimeout(slowWarningTimeout);
       
       if (result.intent === 'record') {
         let fullResponse = "";
@@ -637,8 +666,8 @@ function MainApp() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans relative overflow-hidden flex flex-col lg:flex-row">
       {/* Background Mesh Gradients */}
-      <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[120px] pointer-events-none"></div>
 
       {/* Sidebar - Desktop */}
       <nav className="hidden lg:flex w-72 glass border-r border-white/5 p-6 flex-col z-50 h-screen fixed">
@@ -698,6 +727,7 @@ function MainApp() {
             <h2 className="text-4xl font-bold mb-2 tracking-tight">Kese hain <span className="text-emerald-400">aap</span>?</h2>
             <p className="text-slate-400 font-light italic">"COB is monitoring your shop's transactions in real-time."</p>
           </div>
+          
           <div className="flex">
              {user && (
                 <button 
@@ -710,6 +740,31 @@ function MainApp() {
              )}
           </div>
         </section>
+
+        {/* Cloud Sync Warning for Simulated Mode */}
+        {user && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12 glass rounded-3xl border border-yellow-500/20 p-6 flex flex-col md:flex-row items-center justify-between gap-6"
+          >
+            <div className="flex items-center gap-5">
+              <div className="w-16 h-16 rounded-2xl bg-yellow-500/10 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-yellow-500 mb-1">Cloud Backup: Band Hai</h3>
+                <p className="text-sm text-slate-400 max-w-sm">Apka sara hisab abhi sirf isi dukan (device) par hai. Link share karne ya mobile badalne ke liye humein Cloud (Firebase) se jorna hoga.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setAiResponse("Sain! Cloud Backup (Firebase) setting filhal band hai. Aap agent se kaho 'Set up Firebase' taake apka sara data mehfooz ho jaye.")}
+              className="w-full md:w-auto px-8 py-4 bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 rounded-2xl font-bold uppercase tracking-widest hover:bg-yellow-500/20 transition-all active:scale-95"
+            >
+              Info Lein
+            </button>
+          </motion.div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
