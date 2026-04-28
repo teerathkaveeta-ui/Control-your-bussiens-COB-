@@ -5,6 +5,7 @@ import {
   addTransaction, 
   getRecentTransactions, 
   updateCustomerDebt,
+  getCustomers,
   setShopStatus,
   getShopData
 } from './services/firebase';
@@ -117,12 +118,13 @@ function MainApp() {
   const [shopOn, setShopOn] = useState(false);
   const [lastSessionStart, setLastSessionStart] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [coins, setCoins] = useState(1500); 
   const [shopSize, setShopSize] = useState('Small');
   const [chatInput, setChatInput] = useState('');
   const [transcriptQueue, setTranscriptQueue] = useState<string[]>([]);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [manualEntry, setManualEntry] = useState({ amount: '', type: 'income', description: '', customerName: '' });
+  const [manualEntry, setManualEntry] = useState({ amount: '', type: 'income', description: '', customerName: '', phone: '' });
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const lastProcessedTranscript = React.useRef<string | null>(null);
 
@@ -140,6 +142,9 @@ function MainApp() {
       // Limit to 1500 roughly (approx 150 days * 10 transactions/day)
       const data = await getRecentTransactions(uid, 1500); 
       setTransactions(Array.isArray(data) ? data : []);
+      
+      const custList = await getCustomers(uid);
+      setCustomers(Array.isArray(custList) ? custList : []);
       
       // Load products too
       const p = localStorage.getItem(`products_${uid}`);
@@ -211,8 +216,14 @@ function MainApp() {
   };
 
   useEffect(() => {
+    // Safety timeout: Ensure loading finishes even if auth listener takes too long
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
     const unsubscribe = auth.onAuthStateChanged(async (u: any) => {
       try {
+        clearTimeout(safetyTimeout);
         try {
           await SplashScreen.hide();
         } catch (e) {
@@ -231,7 +242,11 @@ function MainApp() {
         setLoading(false);
       }
     });
-    return unsubscribe;
+
+    return () => {
+      unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   if (loading) return (
@@ -826,15 +841,27 @@ function MainApp() {
                     </select>
                   </div>
                </div>
-               <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Customer Name (Optional for Udhaar/Jama)</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Ahmed, Sahil" 
-                    className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
-                    value={manualEntry.customerName}
-                    onChange={e => setManualEntry({...manualEntry, customerName: e.target.value})}
-                  />
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Customer Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Ahmed" 
+                      className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
+                      value={manualEntry.customerName}
+                      onChange={e => setManualEntry({...manualEntry, customerName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Mobile / Phone</label>
+                    <input 
+                      type="text" 
+                      placeholder="0300..." 
+                      className="w-full glass bg-white/10 p-4 rounded-xl text-sm border-white/10"
+                      value={manualEntry.phone}
+                      onChange={e => setManualEntry({...manualEntry, phone: e.target.value})}
+                    />
+                  </div>
                </div>
                <div className="space-y-1">
                   <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Kaam / Description</label>
@@ -856,17 +883,18 @@ function MainApp() {
                       amount: amountNum,
                       type: manualEntry.type,
                       description: manualEntry.description,
-                      customerName: manualEntry.customerName || null
+                      customerName: manualEntry.customerName || null,
+                      phone: manualEntry.phone || null
                     });
                     
                     if (manualEntry.customerName && (manualEntry.type === 'debt' || manualEntry.type === 'payment')) {
                       const debtChange = manualEntry.type === 'payment' ? -amountNum : amountNum;
-                      await updateCustomerDebt(user.uid, manualEntry.customerName, debtChange);
+                      await updateCustomerDebt(user.uid, manualEntry.customerName, debtChange, manualEntry.phone);
                     }
                     
                     await loadData(user.uid);
                     setAiResponse("Zabardast! Manual entry record ho gayi hai.");
-                    setManualEntry({ amount: '', type: 'income', description: '', customerName: '' });
+                    setManualEntry({ amount: '', type: 'income', description: '', customerName: '', phone: '' });
                     setShowManualForm(false);
                     speak("Record update ho gaya hai.");
                   } catch (e) {
@@ -964,14 +992,7 @@ function MainApp() {
 
             {view === 'customers' && (
               <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.values(transactions.reduce((acc: any, t) => {
-                  if (t.customerName) {
-                    if (!acc[t.customerName]) acc[t.customerName] = { name: t.customerName, total: 0 };
-                    if (t.type === 'debt') acc[t.customerName].total += (t.amount || 0);
-                    if (t.type === 'payment') acc[t.customerName].total -= (t.amount || 0);
-                  }
-                  return acc;
-                }, {})).filter((c: any) => c.total > 0).map((customer: any, idx) => (
+                {customers.filter(c => (c.totalDebt || 0) > 0).map((customer: any, idx) => (
                   <div key={idx} className="glass p-5 rounded-2xl flex justify-between items-center group hover:bg-white/10 transition-all cursor-pointer border border-white/5">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center">
@@ -979,15 +1000,22 @@ function MainApp() {
                       </div>
                       <div>
                         <p className="font-bold text-lg">{customer.name}</p>
-                        <p className="text-xs text-rose-400 font-mono italic">Hisab Baqi: Rs. {customer.total.toLocaleString()}</p>
+                        {customer.phone && (
+                          <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-1">
+                             <Smartphone className="w-3 h-3" />
+                             {customer.phone}
+                          </div>
+                        )}
+                        <p className="text-xs text-rose-400 font-mono italic">Hisab Baqi: Rs. {(customer.totalDebt || 0).toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="flex gap-2">
                        <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const text = `Assalamu Alaikum ${customer.name}, aapka is waqt ka COB Udhaar balance Rs. ${customer.total} hai. Shukriya.`;
-                          window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+                          const text = `Assalamu Alaikum ${customer.name}, aapka is waqt ka COB Udhaar balance Rs. ${customer.totalDebt} hai. Shukriya.`;
+                          const phoneNum = customer.phone?.replace(/[^0-9]/g, '');
+                          window.open(phoneNum ? `https://wa.me/${phoneNum}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`);
                         }}
                         className="p-3 glass rounded-xl text-emerald-400 hover:bg-emerald-500 hover:text-slate-950 transition-all active:scale-95 flex items-center gap-2"
                        >
@@ -997,7 +1025,7 @@ function MainApp() {
                     </div>
                   </div>
                 ))}
-                {transactions.filter(t => t.type === 'debt').length === 0 && (
+                {customers.filter(c => (c.totalDebt || 0) > 0).length === 0 && (
                   <p className="col-span-2 text-center py-20 text-slate-600 font-light italic tracking-tight">"Everyone has cleared their bills! COB is impressed."</p>
                 )}
               </div>

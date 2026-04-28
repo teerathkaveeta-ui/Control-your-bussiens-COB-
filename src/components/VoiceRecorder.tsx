@@ -40,14 +40,15 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
     const recognitionInstance = new SpeechRecognition();
     recognitionInstance.continuous = true;
     recognitionInstance.interimResults = true;
-    recognitionInstance.lang = 'hi-IN'; // Multilingual Hindi/Urdu/English support
+    // Fallback language chain: Hindi/India is best for Roman Urdu comprehension
+    recognitionInstance.lang = 'hi-IN'; 
 
     recognitionInstance.onstart = () => {
       isRecordingRef.current = true;
       setIsRecording(true);
       isStartingRef.current = false;
       setErrorMessage(null);
-      console.log("Recognition started (hi-IN)");
+      console.log("Mic turned on. Aap bol sakte hain.");
     };
 
     recognitionInstance.onresult = (event: any) => {
@@ -64,7 +65,7 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
     };
 
     recognitionInstance.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
+      console.error("Mic error:", event.error);
       if (event.error === 'aborted') return;
       
       isStartingRef.current = false;
@@ -72,9 +73,11 @@ export default function VoiceRecorder({ onTranscript, isProcessing }: VoiceRecor
       setIsRecording(false);
       
       if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-        setErrorMessage("Mic blocked.");
+        setErrorMessage("Mic blocked! Please allow microphone access in settings.");
+      } else if (event.error === 'no-speech') {
+        setErrorMessage("Aap bole nahi. Dobara koshish karein.");
       } else {
-        setErrorMessage("Masla: " + event.error);
+        setErrorMessage("Masla: " + event.error + ". Refresh karein.");
       }
     };
 

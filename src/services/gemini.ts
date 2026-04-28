@@ -74,7 +74,7 @@ export const parseBusinessInput = async (input: string) => {
     }
   });
 
-  return JSON.parse(response.text);
+  return JSON.parse(response.text || '{}');
 };
 
 export const answerBusinessQuestion = async (question: string, context: string, products: any[] = [], coins: number = 0, shopSize: string = 'Small') => {
@@ -129,5 +129,5 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     User Question: "${question}"`,
   });
 
-  return response.text;
+  return response.text || "Sain, abhi samajh nahi aaya, thora aur batayein.";
 };

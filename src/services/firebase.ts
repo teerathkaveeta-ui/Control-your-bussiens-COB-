@@ -94,8 +94,13 @@ export const getRecentTransactions = async (businessId: string, limitCount = 20)
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-export const updateCustomerDebt = async (businessId: string, customerName: string, amount: number) => {
+export const updateCustomerDebt = async (businessId: string, customerName: string, amount: number, phone?: string | null) => {
   if (isSimulated) {
+     const customers = JSON.parse(localStorage.getItem('customers') || '{}');
+     if (!customers[customerName]) customers[customerName] = { name: customerName, totalDebt: 0, phone: phone || null };
+     customers[customerName].totalDebt += amount;
+     if (phone) customers[customerName].phone = phone;
+     localStorage.setItem('customers', JSON.stringify(customers));
      return;
   }
   const colRef = collection(db, 'businesses', businessId, 'customers');
@@ -103,14 +108,24 @@ export const updateCustomerDebt = async (businessId: string, customerName: strin
   const snapshot = await getDocs(q);
   
   if (snapshot.empty) {
-    return await addDoc(colRef, { name: customerName, totalDebt: amount });
+    return await addDoc(colRef, { name: customerName, totalDebt: amount, phone: phone || null });
   } else {
     const customerDoc = snapshot.docs[0];
     const newDebt = (customerDoc.data().totalDebt || 0) + amount;
-    return await updateDoc(doc(db, 'businesses', businessId, 'customers', customerDoc.id), {
-      totalDebt: newDebt
-    });
+    const updateData: any = { totalDebt: newDebt };
+    if (phone) updateData.phone = phone;
+    return await updateDoc(doc(db, 'businesses', businessId, 'customers', customerDoc.id), updateData);
   }
+};
+
+export const getCustomers = async (businessId: string) => {
+  if (isSimulated) {
+    const customers = JSON.parse(localStorage.getItem('customers') || '{}');
+    return Object.values(customers);
+  }
+  const colRef = collection(db, 'businesses', businessId, 'customers');
+  const snapshot = await getDocs(colRef);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 export const setShopStatus = async (isOn: boolean) => {
