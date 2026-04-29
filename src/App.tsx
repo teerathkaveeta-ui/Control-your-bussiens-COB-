@@ -93,6 +93,8 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
   }
 };
 
+const APP_VERSION = "1.2.4";
+
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
     {/* Dynamic Background Glow */}
@@ -106,39 +108,34 @@ const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
       className="w-full h-full relative z-10 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
     >
       {/* Background Shape */}
-      <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
+      <rect x="2" y="2" width="20" height="20" rx="4" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
       
-      {/* The Graph Path - Solid & Bold */}
+      {/* The Graph Path - Strong & Geometric */}
       <path 
-        d="M4 18L9 12L13 16L20 7" 
+        d="M5 16L9 11L13 14L19 6" 
         stroke="#10b981" 
-        strokeWidth="3.5" 
+        strokeWidth="3.2" 
         strokeLinecap="round" 
         strokeLinejoin="round" 
       />
       
-      {/* Area under the graph - Semi-transparent fill */}
+      {/* Glow fill under path */}
       <path 
-        d="M4 18L9 12L13 16L20 7V20H4V18Z" 
+        d="M5 16L9 11L13 14L19 6V18H5V16Z" 
         fill="url(#logo-gradient)" 
-        fillOpacity="0.2"
+        fillOpacity="0.15"
       />
 
-      {/* Axis Lines */}
-      <path 
-        d="M3 21H21M3 3V21" 
-        stroke="white" 
-        strokeWidth="1.5" 
-        strokeLinecap="round" 
-        strokeOpacity="0.2"
-      />
+      {/* Axis Pins */}
+      <circle cx="5" cy="18" r="1.5" fill="white" fillOpacity="0.3" />
+      <circle cx="19" cy="18" r="1.5" fill="white" fillOpacity="0.3" />
 
-      {/* Modern Circular Terminals */}
-      <circle cx="20" cy="7" r="2.5" fill="#10b981" />
-      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.3" />
+      {/* Modern Terminals */}
+      <circle cx="19" cy="6" r="2.5" fill="#10b981" />
+      <circle cx="19" cy="6" r="4" stroke="#10b981" strokeWidth="1" className="animate-pulse" opacity="0.4" />
 
       <defs>
-        <linearGradient id="logo-gradient" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
+        <linearGradient id="logo-gradient" x1="12" y1="6" x2="12" y2="18" gradientUnits="userSpaceOnUse">
           <stop stopColor="#10b981" />
           <stop offset="1" stopColor="#10b981" stopOpacity="0" />
         </linearGradient>
@@ -315,13 +312,26 @@ function MainApp() {
   }, []);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950">
+      <div className="relative mb-8">
+        <Logo className="w-16 h-16" />
+        <div className="absolute inset-0 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+      </div>
+      <p className="text-slate-400 animate-pulse font-medium tracking-widest text-xs uppercase">Initialising COB...</p>
+      <button 
+        onClick={() => window.location.reload()}
+        className="mt-8 text-slate-500 text-xs underline hover:text-slate-300"
+      >
+        Taking too long? Tap to Refresh
+      </button>
     </div>
   );
 
   if (!user) return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-6 text-center overflow-hidden relative">
+      <div className="absolute top-0 right-0 p-4">
+        <p className="text-[9px] text-slate-800 font-mono">v{APP_VERSION}</p>
+      </div>
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[120px]"></div>
       
@@ -334,9 +344,9 @@ function MainApp() {
           <Logo className="w-20 h-20" />
           <div className="absolute inset-0 bg-emerald-500/10 rounded-[3rem] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </div>
-        <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Control Your Business <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">(COB)</span></h1>
-        <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light border-l-4 border-[#275fb0] pl-6 py-2">
-          Manage your business with ease. Voice-powered AI bookkeeping for modern entrepreneurs.
+        <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">COB <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">Monitor</span></h1>
+        <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light border-l-4 border-emerald-500/40 pl-6 py-2">
+          Smart Business Companion. Voice-powered bookkeeping for modern shopkeepers.
         </p>
         <button 
           onClick={loginWithGoogle}
@@ -787,6 +797,9 @@ function MainApp() {
         <button onClick={() => auth.signOut()} className="flex items-center gap-2 text-rose-400 text-xs font-bold hover:bg-rose-500/10 w-full p-3 rounded-xl transition-colors tracking-widest uppercase">
           <LogOut className="w-3.5 h-3.5" /> Sign Out
         </button>
+        <div className="mt-4 text-center">
+          <p className="text-[10px] text-slate-700 font-mono tracking-tighter">APP VERSION: {APP_VERSION}</p>
+        </div>
       </div>
     </>
   );
