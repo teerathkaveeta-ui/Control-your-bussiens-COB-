@@ -93,24 +93,22 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
   }
 };
 
-const APP_VERSION = "1.2.6";
+const APP_VERSION = "1.2.7";
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
-    {/* Dynamic Background Glow */}
     <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 animate-pulse"></div>
-    <div className="absolute inset-0 bg-emerald-400/5 blur-xl rounded-full animate-ping"></div>
-
     <svg 
       viewBox="0 0 24 24" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
       className="w-full h-full relative z-10 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
     >
-      {/* Background Shape */}
-      <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
+      {/* Solid Background Shape */}
+      <rect x="2" y="2" width="20" height="20" rx="6" fill="#10b981" fillOpacity="0.15" />
+      <rect x="2" y="2" width="20" height="20" rx="6" stroke="#10b981" strokeWidth="1.5" strokeOpacity="0.3" />
       
-      {/* The Graph Path - Solid & Bold */}
+      {/* Solid Graph Path */}
       <path 
         d="M4 18L9 12L13 16L20 7" 
         stroke="#10b981" 
@@ -123,21 +121,12 @@ const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
       <path 
         d="M4 18L9 12L13 16L20 7V20H4V18Z" 
         fill="url(#logo-gradient)" 
-        fillOpacity="0.2"
+        fillOpacity="0.3"
       />
 
-      {/* Axis Lines */}
-      <path 
-        d="M3 21H21M3 3V21" 
-        stroke="white" 
-        strokeWidth="1.5" 
-        strokeLinecap="round" 
-        strokeOpacity="0.2"
-      />
-
-      {/* Modern Circular Terminals */}
+      {/* Modern Circular Terminal */}
       <circle cx="20" cy="7" r="2.5" fill="#10b981" />
-      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.3" />
+      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.4" />
 
       <defs>
         <linearGradient id="logo-gradient" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
@@ -334,7 +323,7 @@ function MainApp() {
         >
           Force System Refresh
         </button>
-        <p className="text-[10px] text-slate-800 font-mono">v{APP_VERSION}</p>
+        <p className="text-[10px] text-slate-700 font-mono tracking-widest uppercase">System Version: {APP_VERSION}</p>
       </div>
     </div>
   );
