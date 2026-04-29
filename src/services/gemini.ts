@@ -1,8 +1,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let genAI: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (!genAI) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      console.error("GEMINI_API_KEY is not defined in the environment.");
+    }
+    genAI = new GoogleGenAI({ apiKey: key || "dummy-key" });
+  }
+  return genAI;
+};
 
 export const parseBusinessInput = async (input: string) => {
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `You are an AI business partner named COB. 
@@ -83,7 +95,7 @@ export const answerBusinessQuestion = async (question: string, context: string, 
     ? `Available Products and Rates:\n${products.map(p => `- ${p.name}: Rs. ${p.price} (${p.description})`).join('\n')}`
     : "No product rate list available.";
 
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `You are a helpful business assistant named COB (Control Our Business). 
     The user can speak in any language (Urdu, Hindi, English, etc). 

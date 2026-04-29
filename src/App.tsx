@@ -93,7 +93,7 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
   }
 };
 
-const APP_VERSION = "1.2.5";
+const APP_VERSION = "1.2.6";
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
@@ -302,11 +302,12 @@ function MainApp() {
         // Force splash screen to hide after UI is ready
         setTimeout(async () => {
           try {
+            console.log("Hiding Splash Screen...");
             await SplashScreen.hide();
           } catch (e) {
-            console.error(e);
+            console.warn("Splash screen hide failed (likely not in native environment):", e);
           }
-        }, 500);
+        }, 1000);
       }
     });
 
