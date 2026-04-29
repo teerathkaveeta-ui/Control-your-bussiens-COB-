@@ -93,7 +93,7 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
   }
 };
 
-const APP_VERSION = "1.2.4";
+const APP_VERSION = "1.2.5";
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
@@ -317,18 +317,24 @@ function MainApp() {
   }, []);
 
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950">
-      <div className="relative mb-8">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#020617]">
+      <div className="relative mb-8 scale-125">
         <Logo className="w-16 h-16" />
-        <div className="absolute inset-0 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+        <div className="absolute inset-[-8px] border-4 border-emerald-500/10 border-t-emerald-500 rounded-full animate-spin"></div>
       </div>
-      <p className="text-slate-400 animate-pulse font-medium tracking-widest text-xs uppercase">Initialising COB...</p>
-      <button 
-        onClick={() => window.location.reload()}
-        className="mt-8 text-slate-500 text-xs underline hover:text-slate-300"
-      >
-        Taking too long? Tap to Refresh
-      </button>
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-emerald-500 font-mono tracking-[0.2em] text-[10px] uppercase font-bold">COB System Load</p>
+        <p className="text-slate-500 text-[10px] uppercase tracking-tighter">Verifying Database & Auth</p>
+      </div>
+      <div className="mt-12 flex flex-col gap-4 items-center">
+        <button 
+          onClick={() => window.location.reload()}
+          className="bg-emerald-500/10 text-emerald-400 px-6 py-2 rounded-full text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all shadow-lg shadow-emerald-500/5"
+        >
+          Force System Refresh
+        </button>
+        <p className="text-[10px] text-slate-800 font-mono">v{APP_VERSION}</p>
+      </div>
     </div>
   );
 
@@ -345,7 +351,14 @@ function MainApp() {
         animate={{ opacity: 1, y: 0 }}
         className="z-10 flex flex-col items-center"
       >
-        <div className="mb-8 p-10 glass rounded-[3rem] shadow-2xl relative group">
+        <div className="mb-8 p-10 glass rounded-[3rem] shadow-2xl relative group cursor-pointer" onClick={() => {
+          const count = Number(localStorage.getItem('debug_tap') || 0) + 1;
+          localStorage.setItem('debug_tap', count.toString());
+          if (count >= 5) {
+            alert(`Debug Info:\nVer: ${APP_VERSION}\nUA: ${navigator.userAgent}\nStorage: ${JSON.stringify(Object.keys(localStorage))}`);
+            localStorage.setItem('debug_tap', '0');
+          }
+        }}>
           <Logo className="w-20 h-20" />
           <div className="absolute inset-0 bg-emerald-500/10 rounded-[3rem] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </div>
