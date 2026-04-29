@@ -108,34 +108,39 @@ const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
       className="w-full h-full relative z-10 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
     >
       {/* Background Shape */}
-      <rect x="2" y="2" width="20" height="20" rx="4" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" fillOpacity="0.05" className="text-emerald-500" />
       
-      {/* The Graph Path - Strong & Geometric */}
+      {/* The Graph Path - Solid & Bold */}
       <path 
-        d="M5 16L9 11L13 14L19 6" 
+        d="M4 18L9 12L13 16L20 7" 
         stroke="#10b981" 
-        strokeWidth="3.2" 
+        strokeWidth="3.5" 
         strokeLinecap="round" 
         strokeLinejoin="round" 
       />
       
-      {/* Glow fill under path */}
+      {/* Area under the graph - Semi-transparent fill */}
       <path 
-        d="M5 16L9 11L13 14L19 6V18H5V16Z" 
+        d="M4 18L9 12L13 16L20 7V20H4V18Z" 
         fill="url(#logo-gradient)" 
-        fillOpacity="0.15"
+        fillOpacity="0.2"
       />
 
-      {/* Axis Pins */}
-      <circle cx="5" cy="18" r="1.5" fill="white" fillOpacity="0.3" />
-      <circle cx="19" cy="18" r="1.5" fill="white" fillOpacity="0.3" />
+      {/* Axis Lines */}
+      <path 
+        d="M3 21H21M3 3V21" 
+        stroke="white" 
+        strokeWidth="1.5" 
+        strokeLinecap="round" 
+        strokeOpacity="0.2"
+      />
 
-      {/* Modern Terminals */}
-      <circle cx="19" cy="6" r="2.5" fill="#10b981" />
-      <circle cx="19" cy="6" r="4" stroke="#10b981" strokeWidth="1" className="animate-pulse" opacity="0.4" />
+      {/* Modern Circular Terminals */}
+      <circle cx="20" cy="7" r="2.5" fill="#10b981" />
+      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.3" />
 
       <defs>
-        <linearGradient id="logo-gradient" x1="12" y1="6" x2="12" y2="18" gradientUnits="userSpaceOnUse">
+        <linearGradient id="logo-gradient" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
           <stop stopColor="#10b981" />
           <stop offset="1" stopColor="#10b981" stopOpacity="0" />
         </linearGradient>
@@ -344,9 +349,9 @@ function MainApp() {
           <Logo className="w-20 h-20" />
           <div className="absolute inset-0 bg-emerald-500/10 rounded-[3rem] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </div>
-        <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">COB <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">Monitor</span></h1>
+        <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Control Your Business <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">(COB)</span></h1>
         <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light border-l-4 border-emerald-500/40 pl-6 py-2">
-          Smart Business Companion. Voice-powered bookkeeping for modern shopkeepers.
+          Manage your business with ease. Voice-powered AI bookkeeping for modern entrepreneurs.
         </p>
         <button 
           onClick={loginWithGoogle}
