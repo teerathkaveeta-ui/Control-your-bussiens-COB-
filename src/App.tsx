@@ -93,43 +93,41 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
   }
 };
 
-const APP_VERSION = "1.2.7";
+const APP_VERSION = "1.2.9 (Build 429)";
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
-    <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 animate-pulse"></div>
+    <div className="absolute inset-0 bg-emerald-500/30 blur-3xl rounded-full scale-150 animate-pulse"></div>
+    <div className="absolute -inset-4 bg-emerald-400/5 blur-2xl rounded-full animate-ping"></div>
+
     <svg 
       viewBox="0 0 24 24" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
-      className="w-full h-full relative z-10 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+      className="w-full h-full relative z-10 drop-shadow-[0_0_20px_rgba(16,185,129,0.7)]"
     >
-      {/* Solid Background Shape */}
-      <rect x="2" y="2" width="20" height="20" rx="6" fill="#10b981" fillOpacity="0.15" />
-      <rect x="2" y="2" width="20" height="20" rx="6" stroke="#10b981" strokeWidth="1.5" strokeOpacity="0.3" />
+      <rect x="2" y="2" width="20" height="20" rx="7" fill="#10b981" fillOpacity="0.25" />
+      <rect x="2" y="2" width="20" height="20" rx="7" stroke="#10b981" strokeWidth="2" strokeOpacity="0.5" />
       
-      {/* Solid Graph Path */}
       <path 
         d="M4 18L9 12L13 16L20 7" 
         stroke="#10b981" 
-        strokeWidth="3.5" 
+        strokeWidth="4" 
         strokeLinecap="round" 
         strokeLinejoin="round" 
       />
       
-      {/* Area under the graph - Semi-transparent fill */}
       <path 
-        d="M4 18L9 12L13 16L20 7V20H4V18Z" 
-        fill="url(#logo-gradient)" 
-        fillOpacity="0.3"
+        d="M4 18L9 12L13 16L20 7V21H4V18Z" 
+        fill="url(#logo-gradient-v3)" 
+        fillOpacity="0.4"
       />
 
-      {/* Modern Circular Terminal */}
-      <circle cx="20" cy="7" r="2.5" fill="#10b981" />
-      <circle cx="20" cy="7" r="5" stroke="#10b981" strokeWidth="1" className="animate-ping" opacity="0.4" />
+      <circle cx="20" cy="7" r="3" fill="#10b981" />
+      <circle cx="20" cy="7" r="6" stroke="#10b981" strokeWidth="1.5" className="animate-ping" opacity="0.6" />
 
       <defs>
-        <linearGradient id="logo-gradient" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
+        <linearGradient id="logo-gradient-v3" x1="12" y1="7" x2="12" y2="21" gradientUnits="userSpaceOnUse">
           <stop stopColor="#10b981" />
           <stop offset="1" stopColor="#10b981" stopOpacity="0" />
         </linearGradient>
@@ -149,6 +147,7 @@ export default function App() {
 function MainApp() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState("Initializing System...");
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [view, setView] = useState<'dashboard' | 'history' | 'customers' | 'ai' | 'whatsapp' | 'alldays' | 'store'>('dashboard');
@@ -276,18 +275,26 @@ function MainApp() {
 
     const unsubscribe = auth.onAuthStateChanged(async (u: any) => {
       try {
+        setLoadingStatus("Verifying User Session...");
         clearTimeout(safetyTimeout);
         setUser(u);
         if (u) {
+          setLoadingStatus("Connecting to Business Database...");
           const shopData = await getShopData();
           setShopOn(shopData.shopOn);
           setLastSessionStart(shopData.lastSessionStart);
+          
+          setLoadingStatus("Synchronizing Shop Records...");
           await loadData(u.uid);
+          setLoadingStatus("AI Engine Ready.");
+        } else {
+          setLoadingStatus("Ready to Login.");
         }
       } catch (err) {
         console.error("Auth initialization error:", err);
+        setLoadingStatus("Storage Error. Please Refresh.");
       } finally {
-        setLoading(false);
+        setTimeout(() => setLoading(false), 500);
         // Force splash screen to hide after UI is ready
         setTimeout(async () => {
           try {
@@ -307,23 +314,49 @@ function MainApp() {
   }, []);
 
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#020617]">
-      <div className="relative mb-8 scale-125">
-        <Logo className="w-16 h-16" />
-        <div className="absolute inset-[-8px] border-4 border-emerald-500/10 border-t-emerald-500 rounded-full animate-spin"></div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#01040f] overflow-hidden">
+      {/* Dynamic Background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-emerald-500/5 rounded-full blur-[100px] animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }}></div>
       </div>
-      <div className="flex flex-col items-center gap-2">
-        <p className="text-emerald-500 font-mono tracking-[0.2em] text-[10px] uppercase font-bold">COB System Load</p>
-        <p className="text-slate-500 text-[10px] uppercase tracking-tighter">Verifying Database & Auth</p>
+
+      <div className="relative mb-12 scale-125">
+        <Logo className="w-20 h-20" />
+        <div className="absolute inset-[-12px] border-2 border-emerald-500/5 border-t-emerald-500 rounded-full animate-[spin_1.5s_linear_infinite]"></div>
+        <div className="absolute inset-[-20px] border-2 border-white/5 border-b-white/10 rounded-full animate-[spin_3s_linear_infinite_reverse]"></div>
       </div>
-      <div className="mt-12 flex flex-col gap-4 items-center">
+
+      <div className="flex flex-col items-center gap-3 z-10 px-6 text-center">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
+          <p className="text-emerald-500 font-mono tracking-[0.3em] text-[10px] uppercase font-black">{loadingStatus}</p>
+        </div>
+        <p className="text-slate-400 text-[11px] uppercase tracking-wider font-light mb-1">COB Neural Link v{APP_VERSION}</p>
+        <div className="w-48 h-1 bg-white/5 rounded-full overflow-hidden">
+          <motion.div 
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 3, ease: "easeInOut" }}
+            className="h-full bg-emerald-500/40"
+          />
+        </div>
+      </div>
+
+      <div className="mt-16 flex flex-col gap-6 items-center z-10">
         <button 
-          onClick={() => window.location.reload()}
-          className="bg-emerald-500/10 text-emerald-400 px-6 py-2 rounded-full text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all shadow-lg shadow-emerald-500/5"
+          onClick={() => {
+            localStorage.clear();
+            window.location.reload();
+          }}
+          className="bg-white/5 text-slate-300 px-8 py-3 rounded-2xl text-[10px] font-bold border border-white/10 hover:bg-emerald-500 hover:text-slate-950 transition-all shadow-xl backdrop-blur-md uppercase tracking-widest active:scale-95"
         >
-          Force System Refresh
+          Reset Session Cache
         </button>
-        <p className="text-[10px] text-slate-700 font-mono tracking-widest uppercase">System Version: {APP_VERSION}</p>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-[10px] text-slate-700 font-mono tracking-widest uppercase opacity-50">Stable Ver: {APP_VERSION}</p>
+          <p className="text-[8px] text-slate-800 font-mono uppercase tracking-tighter">Initializing Firebase & Gemini Engine</p>
+        </div>
       </div>
     </div>
   );

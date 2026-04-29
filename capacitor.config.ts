@@ -2,15 +2,16 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.cob.app',
-  appName: 'COB Monitor v1.2.5',
+  appName: 'COB Monitor v1.2.8',
   webDir: 'dist',
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2000,
-      launchAutoHide: true,
+      launchShowDuration: 3000,
+      launchAutoHide: false,
       backgroundColor: "#020617",
       androidScaleType: "CENTER_CROP",
       showSpinner: true,
+      androidSpinnerStyle: "large",
       spinnerColor: "#10b981"
     }
   }
