@@ -1,5 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signInAnonymously 
+} from 'firebase/auth';
 import { 
   getFirestore, 
   collection, 
@@ -93,6 +100,36 @@ export const loginWithGoogle = async () => {
     return result.user;
   } catch (error) {
     console.error("Login failed:", error);
+    throw error;
+  }
+};
+
+export const loginWithEmailOrSignUp = async (email: string, pass: string) => {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, pass);
+    return result.user;
+  } catch (error: any) {
+    if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+      try {
+        const result = await createUserWithEmailAndPassword(auth, email, pass);
+        return result.user;
+      } catch (signUpError: any) {
+        if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+          throw new Error("Incorrect login PIN or password. If this is a new account, enter a different email or mobile number.");
+        }
+        throw signUpError;
+      }
+    }
+    throw error;
+  }
+};
+
+export const loginAnonymouslyMode = async () => {
+  try {
+    const result = await signInAnonymously(auth);
+    return result.user;
+  } catch (error) {
+    console.error("Anonymous authentication failed:", error);
     throw error;
   }
 };

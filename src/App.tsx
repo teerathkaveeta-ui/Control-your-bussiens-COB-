@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   auth, 
   loginWithGoogle, 
+  loginWithEmailOrSignUp,
+  loginAnonymouslyMode,
   addTransaction, 
   getRecentTransactions, 
   updateCustomerDebt,
@@ -183,6 +185,13 @@ function MainApp() {
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
   const [chatInput, setChatInput] = useState("");
   
+  // Alternative Credentials login states for APK / Mobile compatibility
+  const [emailOrPhone, setEmailOrPhone] = useState("");
+  const [passcode, setPasscode] = useState("");
+  const [useCredentials, setUseCredentials] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+  
   const lastRecordedTransaction = React.useRef<{ amount: number, type: string, time: number } | null>(null);
   const lastProcessedTranscript = React.useRef<string | null>(null);
 
@@ -191,6 +200,62 @@ function MainApp() {
     if (user) {
       await loadData(user.uid);
       setAiResponse("Records have been refreshed.");
+    }
+  };
+
+  const handleCredentialsAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setIsSubmittingAuth(true);
+
+    try {
+      const trimmedInput = emailOrPhone.trim();
+      const trimmedPass = passcode.trim();
+
+      if (!trimmedInput) {
+        throw new Error("Ghar ya Mobile number likhein!");
+      }
+      if (trimmedPass.length < 6) {
+        throw new Error("Password / PIN kam se kam 6 huroof (digits) ka hona chahiye.");
+      }
+
+      // Convert mobile format or username to standard clean Firebase email
+      let email = trimmedInput;
+      if (/^[0-9+]+$/.test(trimmedInput.replace(/\s+/g, ''))) {
+        const cleaned = trimmedInput.replace(/[^0-9]/g, '');
+        email = `${cleaned}@cob.app`;
+      } else if (!trimmedInput.includes('@')) {
+        email = `${trimmedInput.toLowerCase().replace(/[^a-z0-9]/g, '')}@cob.app`;
+      }
+
+      const loggedInUser = await loginWithEmailOrSignUp(email, trimmedPass);
+      setUser(loggedInUser);
+    } catch (err: any) {
+      console.error("Credentials Authentication Failed", err);
+      setAuthError(err.message || "Sign-In fail ho gaya. Apni details check karein.");
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleGuestBypass = async () => {
+    setAuthError(null);
+    setIsSubmittingAuth(true);
+    try {
+      const loggedInUser = await loginAnonymouslyMode();
+      setUser(loggedInUser);
+    } catch (err: any) {
+      console.error("Guest log in failed, running demo account fallback", err);
+      try {
+        const demoEmail = "demo-mobile-user@cob.app";
+        const demoPass = "cob123456";
+        const loggedInUser = await loginWithEmailOrSignUp(demoEmail, demoPass);
+        setUser(loggedInUser);
+      } catch (innerErr) {
+        setAuthError("Bypass login fail ho gaya. Internet check karke dobara try karein.");
+      }
+    } finally {
+      setIsSubmittingAuth(false);
     }
   };
 
@@ -352,13 +417,104 @@ function MainApp() {
         <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light border-l-4 border-emerald-500/40 pl-6 py-2">
           Manage your business with ease. Voice-powered bookkeeping for modern entrepreneurs.
         </p>
-        <button 
-          onClick={loginWithGoogle}
-          className="flex items-center gap-3 bg-white text-slate-950 px-10 py-5 rounded-[2rem] font-bold text-lg hover:bg-emerald-50 transition-all shadow-2xl shadow-white/10 active:scale-95"
-        >
-          <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6" />
-          Sign in with Google
-        </button>
+        {!useCredentials ? (
+          <div className="flex flex-col items-center gap-4">
+            <button 
+              onClick={loginWithGoogle}
+              className="flex items-center gap-3 bg-white text-slate-950 px-10 py-5 rounded-[2rem] font-bold text-lg hover:bg-emerald-50 transition-all shadow-2xl shadow-white/10 active:scale-95"
+            >
+              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6" />
+              Sign in with Google
+            </button>
+
+            <div className="text-slate-500 text-xs font-mono my-2">&mdash; YA PHIR &mdash;</div>
+
+            <button
+              onClick={() => setUseCredentials(true)}
+              className="text-xs text-emerald-400 font-semibold underline hover:text-emerald-300 transition-colors cursor-pointer"
+            >
+              🔑 Mobile APK / Login issues? Use Email or Mobile Number instead
+            </button>
+          </div>
+        ) : (
+          <motion.form 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onSubmit={handleCredentialsAuth} 
+            className="w-full max-w-sm glass border border-white/10 rounded-3xl p-6 space-y-4 text-left"
+          >
+            <h3 className="text-sm font-bold text-slate-100 uppercase tracking-widest font-mono text-center flex items-center justify-center gap-2">
+              <span>📲 MOBILE APP QUICK SIGN-IN</span>
+            </h3>
+            
+            <p className="text-[11px] text-slate-400 leading-relaxed text-center">
+              Google Sign-In APK me work nahi karta. Apna Mobile Number ya Email aur custom Passcode likhein. Agar account nahi bana hua, to yeh automatic naya account bana dega!
+            </p>
+
+            {authError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs text-center leading-relaxed font-mono">
+                ⚠️ {authError}
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono block">Mobile number / Email</label>
+              <input 
+                type="text" 
+                placeholder="03001234567 ya email..." 
+                value={emailOrPhone}
+                onChange={e => setEmailOrPhone(e.target.value)}
+                className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                disabled={isSubmittingAuth}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono block">Passcode / PIN (Mera Khufia Code)</label>
+              <input 
+                type="password" 
+                placeholder="Kam se kam 6 huroof ka code" 
+                value={passcode}
+                onChange={e => setPasscode(e.target.value)}
+                className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                disabled={isSubmittingAuth}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmittingAuth}
+              className="w-full bg-emerald-500 text-slate-950 font-bold py-3.5 px-4 rounded-xl hover:bg-emerald-400 active:scale-[0.98] transition-all text-sm flex items-center justify-center gap-2"
+            >
+              {isSubmittingAuth ? (
+                <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                "Log In / Sign Up"
+              )}
+            </button>
+
+            <div className="grid grid-cols-2 gap-3 !mt-6 pt-3 border-t border-white/5">
+              <button
+                type="button"
+                onClick={handleGuestBypass}
+                disabled={isSubmittingAuth}
+                className="text-center text-[10px] text-amber-400 hover:text-amber-300 font-bold tracking-wider font-mono py-1 rounded bg-amber-500/10 border border-amber-500/20 active:scale-95 transition-transform"
+              >
+                ⚡ QUICK BYPASS (Fast Demo)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUseCredentials(false);
+                  setAuthError(null);
+                }}
+                className="text-center text-[10px] text-slate-400 hover:text-slate-300 font-extrabold tracking-wider font-mono py-1 rounded bg-white/5 border border-white/10 active:scale-95 transition-transform"
+              >
+                &larr; GO BACK TO GOOGLE
+              </button>
+            </div>
+          </motion.form>
+        )}
       </motion.div>
     </div>
   );
