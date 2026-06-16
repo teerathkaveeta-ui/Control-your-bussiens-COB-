@@ -22,6 +22,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export { doc, getDoc, setDoc, collection, addDoc, query, where, getDocs, orderBy, limit, serverTimestamp, updateDoc, deleteDoc };
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -179,10 +180,21 @@ export const getShopData = async () => {
         shopOn: data.shopOn || false, 
         lastSessionStart: data.lastSessionStart || null,
         coins: data.coins || 1500,
-        shopSize: data.shopSize || 'Small'
+        shopSize: data.shopSize || 'Small',
+        whatsappNumber: data.whatsappNumber || '',
+        whatsappApiKey: data.whatsappApiKey || '',
+        geminiApiKey: data.geminiApiKey || ''
       };
     }
-    return { shopOn: false, lastSessionStart: null, coins: 1500, shopSize: 'Small' };
+    return { 
+      shopOn: false, 
+      lastSessionStart: null, 
+      coins: 1500, 
+      shopSize: 'Small',
+      whatsappNumber: '',
+      whatsappApiKey: '',
+      geminiApiKey: ''
+    };
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
   }

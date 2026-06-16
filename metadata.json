@@ -1,10 +1,11 @@
 {
   "name": "Control Your Business (COB)",
-  "description": "Smart Business Monitor. Voice-powered bookkeeping and AI insights for modern shopkeepers.",
+  "description": "Smart Business Monitor. Voice-powered bookkeeping and ledger management for modern shopkeepers.",
   "requestFramePermissions": [
     "microphone"
   ],
   "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
     "AI Business Processing",
     "Voice Recognition",
     "Debt Management"

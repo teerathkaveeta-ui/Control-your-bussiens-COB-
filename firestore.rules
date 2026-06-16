@@ -46,26 +46,29 @@ service cloud.firestore {
 
     function isValidProduct(data) {
       return data.keys().hasAll(['name', 'price']) &&
-             data.keys().size() <= 3 &&
+             data.keys().size() <= 5 &&
              data.name is string && data.name.size() <= 100 &&
              data.price is number && data.price >= 0 &&
-             (data.description == null || (data.description is string && data.description.size() <= 500));
+             (data.description == null || (data.description is string && data.description.size() <= 500)) &&
+             (data.inStock == null || data.inStock is bool);
     }
 
     function isValidNotification(data) {
       return data.keys().hasAll(['message', 'timestamp']) &&
-             data.keys().size() <= 5 &&
-             data.message is string && data.message.size() <= 1000 &&
+             data.keys().size() <= 6 &&
+             data.message is string && data.message.size() <= 2000 &&
              (data.item == null || (data.item is string && data.item.size() <= 100)) &&
-             (data.rawTranscript == null || (data.rawTranscript is string && data.rawTranscript.size() <= 1000));
+             (data.rawTranscript == null || (data.rawTranscript is string && data.rawTranscript.size() <= 2000));
     }
 
     function isValidShopSettings(data) {
-      return data.keys().size() <= 10 &&
+      return data.keys().size() <= 15 &&
              (data.shopOn == null || data.shopOn is bool) &&
              (data.lastSessionStart == null || data.lastSessionStart is number) &&
              (data.coins == null || data.coins is number) &&
-             (data.shopSize == null || data.shopSize is string);
+             (data.shopSize == null || data.shopSize is string) &&
+             (data.whatsappNumber == null || data.whatsappNumber is string) &&
+             (data.whatsappApiKey == null || data.whatsappApiKey is string);
     }
 
     match /businesses/{businessId} {
@@ -105,6 +108,11 @@ service cloud.firestore {
       match /settings/main {
         allow get, write: if isOwner(businessId);
       }
+    }
+
+    match /app_config/gemini {
+      allow get: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.token.email == 'teerathkaveeta@gmail.com';
     }
   }
 }

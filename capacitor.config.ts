@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.cob.app',
-  appName: 'COB Monitor v1.2.8',
+  appName: 'COB Monitor v1.3.3',
   webDir: 'dist',
   plugins: {
     SplashScreen: {

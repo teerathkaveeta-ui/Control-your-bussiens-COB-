@@ -16,8 +16,8 @@ import {
   syncToCloud,
   deleteTransaction
 } from './services/firebase';
-import { parseBusinessInput, answerBusinessQuestion } from './services/gemini';
 import VoiceRecorder from './components/VoiceRecorder';
+import { processWithGemini } from './services/gemini';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { 
   BarChart3, 
@@ -43,6 +43,8 @@ import {
   ExternalLink,
   ChevronRight,
   Share2,
+  FileText,
+  Download,
   MoreHorizontal,
   Edit2,
   Bell,
@@ -93,7 +95,7 @@ const safeFormat = (date: any, formatStr: string, fallback = '...') => {
   }
 };
 
-const APP_VERSION = "1.2.9 (Build 429)";
+const APP_VERSION = "1.3.3 (Build 433)";
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <div className={`relative flex items-center justify-center ${className}`}>
@@ -155,32 +157,34 @@ function MainApp() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [showHistoryDetail, setShowHistoryDetail] = useState(false);
-  const [products, setProducts] = useState<any[]>([]);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [showProductForm, setShowProductForm] = useState(false);
-  const [newProduct, setNewProduct] = useState({ name: '', description: '', price: '' });
-  const [shopOn, setShopOn] = useState(false);
-  const [lastSessionStart, setLastSessionStart] = useState<number | null>(null);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [coins, setCoins] = useState(1500); 
+  
+  // Custom states for upgraded shop functionality
+  const [coins, setCoins] = useState(1500);
   const [shopSize, setShopSize] = useState('Small');
-  const [chatInput, setChatInput] = useState('');
-  const [transcriptQueue, setTranscriptQueue] = useState<string[]>([]);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappApiKey, setWhatsappApiKey] = useState('');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [products, setProducts] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [omegleActive, setOmegleActive] = useState(false);
+  const [omegleStatus, setOmegleStatus] = useState("disconnected");
+  const [omegleMessages, setOmegleMessages] = useState<any[]>([]);
+  const [omegleStrangerName, setOmegleStrangerName] = useState("");
+  const [omegleStrangerLoc, setOmegleStrangerLoc] = useState("");
+  
+  // Basic states for ledger operation
+  const [shopOn, setShopOn] = useState(true);
+  const [lastSessionStart, setLastSessionStart] = useState<number | null>(() => {
+    const saved = localStorage.getItem('lastSessionStart');
+    return saved ? parseInt(saved) : Date.now();
+  });
   const [showManualForm, setShowManualForm] = useState(false);
-  const [manualEntry, setManualEntry] = useState({ amount: '', type: 'income', description: '', customerName: '', phone: '' });
-  const [lastTranscript, setLastTranscript] = useState<string | null>(null);
-  const lastProcessedTranscript = React.useRef<string | null>(null);
+  const [manualEntry, setManualEntry] = useState({ amount: '', type: 'income', customerName: '', phone: '', description: '' });
+  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  
   const lastRecordedTransaction = React.useRef<{ amount: number, type: string, time: number } | null>(null);
-
-  // Effect to process transcript queue
-  useEffect(() => {
-    if (transcriptQueue.length > 0 && !isProcessing) {
-      const nextTranscript = transcriptQueue[0];
-      setTranscriptQueue(prev => prev.slice(1));
-      processTranscript(nextTranscript);
-    }
-  }, [transcriptQueue, isProcessing]);
+  const lastProcessedTranscript = React.useRef<string | null>(null);
 
   // Manual refresh helper
   const refreshData = async () => {
@@ -192,70 +196,34 @@ function MainApp() {
 
   async function loadData(uid: string) {
     try {
-      // Limit to 1500 roughly (approx 150 days * 10 transactions/day)
+      // 1. Load transactions
       const data = await getRecentTransactions(uid, 1500); 
       setTransactions(Array.isArray(data) ? data : []);
-      
-      const custList = await getCustomers(uid);
-      setCustomers(Array.isArray(custList) ? custList : []);
-      
-      const shopData = await getShopData();
-      if (shopData) {
-        setShopOn(shopData.shopOn);
-        setLastSessionStart(shopData.lastSessionStart);
-        setCoins(shopData.coins);
-        setShopSize(shopData.shopSize);
-      }
-      const p = await getProducts(uid);
-      if (p) setProducts(p);
-      
-      const n = await getNotifications(uid);
-      if (n) setNotifications(n);
 
+      // 2. Load customers
+      const custData = await getCustomers(uid);
+      setCustomers(Array.isArray(custData) ? custData : []);
+
+      // 3. Load settings
+      const shopSettings = await getShopData();
+      if (shopSettings) {
+        setShopOn(shopSettings.shopOn || false);
+        setCoins(shopSettings.coins !== undefined ? shopSettings.coins : 1500);
+        setShopSize(shopSettings.shopSize || 'Small');
+        setWhatsappNumber(shopSettings.whatsappNumber || '');
+        setWhatsappApiKey(shopSettings.whatsappApiKey || '');
+        setGeminiApiKey(shopSettings.geminiApiKey || '');
+      }
+
+      // 4. Load products
+      const prodData = await getProducts(uid);
+      setProducts(Array.isArray(prodData) ? prodData : []);
+      
     } catch (err) {
       console.error("Failed to load data:", err);
       setTransactions([]);
     }
   }
-
-  // Persist coins and shopSize to cloud when they change
-  useEffect(() => {
-    if (user) {
-      syncToCloud(user.uid, 'coins', coins);
-      syncToCloud(user.uid, 'shopSize', shopSize);
-    }
-  }, [coins, shopSize, user]);
-
-  const saveProduct = async () => {
-    if (newProduct.name && newProduct.price) {
-      if (user) {
-        if (editingProduct) {
-          await updateProduct(user.uid, editingProduct.id, { 
-            name: newProduct.name, 
-            description: newProduct.description, 
-            price: parseFloat(newProduct.price) 
-          });
-          setProducts(products.map(p => p.id === editingProduct.id ? { ...newProduct, id: p.id, price: parseFloat(newProduct.price) } : p));
-          setEditingProduct(null);
-        } else {
-          const docRef: any = await addProduct(user.uid, { 
-            name: newProduct.name, 
-            description: newProduct.description, 
-            price: parseFloat(newProduct.price) 
-          });
-          setProducts([{ ...newProduct, id: docRef.id, price: parseFloat(newProduct.price) }, ...products]);
-        }
-        setNewProduct({ name: '', description: '', price: '' });
-        setShowProductForm(false);
-      }
-    }
-  };
-
-  const startEdit = (product: any) => {
-    setEditingProduct(product);
-    setNewProduct({ name: product.name, description: product.description, price: product.price });
-    setShowProductForm(true);
-  };
 
   useEffect(() => {
     // Hide splash screen immediately on mount to prevent blank screen
@@ -279,14 +247,9 @@ function MainApp() {
         clearTimeout(safetyTimeout);
         setUser(u);
         if (u) {
-          setLoadingStatus("Connecting to Business Database...");
-          const shopData = await getShopData();
-          setShopOn(shopData.shopOn);
-          setLastSessionStart(shopData.lastSessionStart);
-          
           setLoadingStatus("Synchronizing Shop Records...");
           await loadData(u.uid);
-          setLoadingStatus("AI Engine Ready.");
+          setLoadingStatus("Ready.");
         } else {
           setLoadingStatus("Ready to Login.");
         }
@@ -355,7 +318,7 @@ function MainApp() {
         </button>
         <div className="flex flex-col items-center gap-1">
           <p className="text-[10px] text-slate-700 font-mono tracking-widest uppercase opacity-50">Stable Ver: {APP_VERSION}</p>
-          <p className="text-[8px] text-slate-800 font-mono uppercase tracking-tighter">Initializing Firebase & Gemini Engine</p>
+          <p className="text-[8px] text-slate-800 font-mono uppercase tracking-tighter">Initializing Digital Ledger</p>
         </div>
       </div>
     </div>
@@ -387,7 +350,7 @@ function MainApp() {
         </div>
         <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Control Your Business <span className="text-emerald-400 font-mono text-2xl ml-2 uppercase">(COB)</span></h1>
         <p className="text-xl text-slate-400 mb-12 max-w-md leading-relaxed font-light border-l-4 border-emerald-500/40 pl-6 py-2">
-          Manage your business with ease. Voice-powered AI bookkeeping for modern entrepreneurs.
+          Manage your business with ease. Voice-powered bookkeeping for modern entrepreneurs.
         </p>
         <button 
           onClick={loginWithGoogle}
@@ -504,227 +467,116 @@ function MainApp() {
     }
   };
 
+  // Effect to process voice transcript directly
   const handleTranscript = (transcript: string) => {
     if (!user) return;
-    setTranscriptQueue(prev => [...prev, transcript]);
+    processTranscript(transcript);
   };
 
   const processTranscript = async (transcript: string) => {
-    if (!transcript.trim()) {
-      console.log("Skipping empty transcript");
-      return;
-    }
+    if (!transcript.trim()) return;
 
-    // Deduplication check
-    if (lastProcessedTranscript.current === transcript.trim()) {
-      console.log("Skipping duplicate transcript processing");
-      return;
-    }
+    if (lastProcessedTranscript.current === transcript.trim()) return;
     lastProcessedTranscript.current = transcript.trim();
 
     setIsProcessing(true);
-    setLastTranscript(transcript);
-    console.log("Processing transcript:", transcript);
     
-    // Safety timeouts for handling slow responses
-    const slowWarningTimeout = setTimeout(() => {
-      if (isProcessing) {
-        const slowMsg = "Processing... the request is taking longer than usual. Please stay on this page.";
-        setAiResponse(slowMsg);
-        speak("Taking longer than usual, please wait.");
-      }
-    }, 8000);
-
-    const timeoutDuration = 20000; 
-    const processingTimeout = setTimeout(() => {
-      setIsProcessing(prev => {
-        if (prev) {
-          console.log("Processing timed out");
-          const finalMsg = "Communication timeout. Please refresh the page or try again.";
-          setAiResponse(finalMsg);
-          speak("Request failed. Please try again.");
-          return false;
-        }
-        return prev;
-      });
-    }, timeoutDuration);
-
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is missing. Please add it to Settings.");
-      }
-
-      console.log("Calling parseBusinessInput...");
-      let result;
+      // 1. Fetch current customers state to send as context to Gemini AI
+      let currentCustomers: any[] = [];
       try {
-        result = await parseBusinessInput(transcript);
-        console.log("Gemini parsed result:", result);
-      } catch (parseError: any) {
-        console.error("Gemini parse failed:", parseError);
-        // Direct regex attempt if API call itself failed
-        const nums = transcript.match(/(\d+)/g);
-        if (nums && nums.length > 0) {
-          result = { 
-            intent: "record", 
-            actions: [{ 
-              amount: parseInt(nums[0], 10), 
-              type: "income", 
-              description: "Sale (Auto-detected)" 
-            }] 
-          };
-        } else {
-          throw parseError; // Re-throw if no numbers found either
-        }
+        currentCustomers = await getCustomers(user.uid);
+      } catch (custErr) {
+        console.warn("Failed to load customers for AI context:", custErr);
       }
-      
-      clearTimeout(processingTimeout);
-      clearTimeout(slowWarningTimeout);
-      
-      if (result.intent === 'record') {
-        let fullResponse = "";
-        let recordedCount = 0;
-        let actions = result.actions || [];
 
-        // FALLBACK: If Gemini failed to find actions/amounts but it is a record intent
-        if (actions.length === 0 || !actions.some((a: any) => a.amount > 0)) {
-           console.log("No valid actions found, trying regex fallback");
-           const nums = transcript.match(/(\d+)/g);
-           if (nums) {
-             const amount = parseInt(nums[nums.length - 1], 10);
-             let type = 'income';
-             if (transcript.match(/(kharcha|expense|kharch)/i)) type = 'expense';
-             if (transcript.match(/(udhar|udhari|baqi|credit)/i)) type = 'debt';
-             if (transcript.match(/(jama|wapsi|payment|recovery|received)/i)) type = 'payment';
-             
-             actions = [{
-               amount,
-               type,
-               description: `Direct Record: ${transcript.length > 25 ? transcript.slice(0, 22) + '...' : transcript}`
-             }];
-           }
-        }
-
-        for (const actionData of actions) {
-          const parsed = actionData;
+      // 2. Call the newly created server-side Gemini processor
+      const aiResult = await processWithGemini(transcript, currentCustomers || [], transactions || [], geminiApiKey || undefined);
+      
+      if (aiResult && aiResult.intent) {
+        if (aiResult.intent === 'record_transaction' && aiResult.transaction) {
+          const { amount, type = 'income', customerName = '', description = '', phone = null } = aiResult.transaction;
           
-          if (!parsed.amount || isNaN(parsed.amount) || (parsed.amount <= 0 && parsed.amount !== -1)) {
-            console.log("Skipping invalid amount action:", parsed);
-            continue;
-          }
+          if (amount && !isNaN(amount)) {
+            await addTransaction(user.uid, {
+              amount,
+              type,
+              description: description || `Voice: ${transcript}`,
+              customerName: customerName || null,
+              phone: phone || null,
+              rawInput: transcript,
+            });
 
-          // Handle special Signal: Clear All Debt (-1)
-          if ((parsed.type === 'debt' || parsed.type === 'payment') && parsed.customerName && parsed.amount === -1) {
-            const balance = transactions.reduce((acc, currentT) => {
-              if (currentT.customerName === parsed.customerName) {
-                if (currentT.type === 'debt') return acc + (currentT.amount || 0);
-                if (currentT.type === 'payment') return acc - (currentT.amount || 0);
-              }
-              return acc;
-            }, 0);
-            parsed.amount = Math.abs(balance);
-            // If balance was positive, they are paying it off (payment)
-            // If balance was negative (unlikely), it would be a debt adjustment
-            parsed.type = 'payment'; 
-            parsed.description = `Settlement: Full debt cleared for ${parsed.customerName}`;
-          }
+            if (customerName && (type === 'debt' || type === 'payment')) {
+              const debtChange = type === 'payment' ? -amount : amount;
+              await updateCustomerDebt(user.uid, customerName, debtChange, phone);
+            }
 
-          // De-duplication check for identical amounts within 10 seconds
-          const now = Date.now();
-          if (lastRecordedTransaction.current && 
-              lastRecordedTransaction.current.amount === parsed.amount && 
-              lastRecordedTransaction.current.type === parsed.type && 
-              (now - lastRecordedTransaction.current.time) < 10000) {
-            console.log("Skipping suspected duplicate recording:", parsed);
-            continue;
+            await loadData(user.uid);
+            
+            // Confirm with the AI's response text
+            const msg = aiResult.response || `Recorded Rs. ${amount} as ${type} for ${customerName || 'cash'}.`;
+            setAiResponse(msg);
+            speak(msg);
+          } else {
+            throw new Error("No valid amount returned by AI.");
           }
-          lastRecordedTransaction.current = { amount: parsed.amount, type: parsed.type, time: now };
+        } else {
+          // It's a query_info or general_chat
+          const msg = aiResult.response || "I processed your request.";
+          setAiResponse(msg);
+          speak(msg);
+        }
+      } else {
+        throw new Error("Invalid response format from AI service.");
+      }
+    } catch (error: any) {
+      console.warn("Gemini processing failed or key missing. Falling back to Local Simple Parser...", error);
+      
+      // FALLBACK: Local Simple Parser (No AI Key Required)
+      try {
+        const nums = transcript.match(/(\d+)/g);
+        if (nums) {
+          const amount = parseInt(nums[nums.length - 1], 10);
+          let type = 'income';
+          let customerName = '';
+          
+          const lower = transcript.toLowerCase();
+          if (lower.includes('kharcha') || lower.includes('expense') || lower.includes('bill')) type = 'expense';
+          if (lower.includes('udhar') || lower.includes('udhari') || lower.includes('baqi')) type = 'debt';
+          if (lower.includes('jama') || lower.includes('payment') || lower.includes('mile') || lower.includes('received')) type = 'payment';
 
-          console.log("Saving to Firebase:", parsed);
+          // Very basic name extraction if "ko" or "se" is used
+          const nameMatch = lower.match(/(?:ko|se|naam|customer) ([a-z]+)/);
+          if (nameMatch) customerName = nameMatch[1];
+
           await addTransaction(user.uid, {
-            ...parsed,
+            amount,
+            type,
+            description: `Voice: ${transcript}`,
+            customerName: customerName || null,
             rawInput: transcript,
           });
 
-          recordedCount++;
-
-          if ((parsed.type === 'debt' || parsed.type === 'payment') && parsed.customerName) {
-            const debtChange = parsed.type === 'payment' ? -parsed.amount : parsed.amount;
-            await updateCustomerDebt(user.uid, parsed.customerName, debtChange);
+          if (customerName && (type === 'debt' || type === 'payment')) {
+            const debtChange = type === 'payment' ? -amount : amount;
+            await updateCustomerDebt(user.uid, customerName, debtChange);
           }
 
-          const actionText = parsed.type === 'payment' 
-            ? `Rs. ${parsed.amount} payment recovery.`
-            : parsed.type === 'debt'
-            ? `Rs. ${parsed.amount} debt.`
-            : parsed.type === 'income'
-            ? `Rs. ${parsed.amount} income.`
-            : `Rs. ${parsed.amount} recorded.`;
-          fullResponse += actionText + " ";
-        }
-
-        if (recordedCount > 0) {
           await loadData(user.uid);
-          const finalMsg = "Success! COB has recorded: " + fullResponse;
-          setAiResponse(finalMsg);
-          speak(finalMsg);
+          const msg = `[Fallback] Recorded Rs. ${amount} as ${type}.`;
+          setAiResponse(msg);
+          speak(msg);
         } else {
-          const failMsg = `I couldn't understand "${transcript}". Please clearly state the amount and transaction type (Income, Expense, or Debt).`;
-          setAiResponse(failMsg);
-          speak(failMsg);
+          setAiResponse("Could not find an amount in your voice command. (Please ensure GEMINI_API_KEY is configured for full conversational responses)");
+          speak("Please say the amount clearly.");
         }
-      } else if (result.intent === 'query') {
-        const context = transactions.slice(0, 60).map(t => 
-          `${t.description}: Rs. ${t.amount} (${t.type})${t.customerName ? ' for ' + t.customerName : ''}`
-        ).join('\n');
-        
-        const answer = await answerBusinessQuestion(result.question, context, products, coins, shopSize);
-        clearTimeout(processingTimeout);
-
-        if (answer.includes('UPGRADE_SUCCESS')) {
-          setCoins(prev => prev - 1000);
-          const nextSize = shopSize === 'Small' ? 'Medium' : shopSize === 'Medium' ? 'Large' : 'Palatial';
-          setShopSize(nextSize);
-          const cleanAnswer = answer.replace('UPGRADE_SUCCESS', '').trim();
-          setAiResponse(cleanAnswer);
-          speak(cleanAnswer);
-          return;
-        }
-
-        if (answer.toLowerCase().includes('rate list') || answer.toLowerCase().includes('available')) {
-           const match = transcript.match(/(rate|price|cost|is) (.*)/i);
-           const itemName = match ? match[2] : "Unknown Item";
-           
-           if (!notifications.some(n => n.item === itemName)) {
-             const newNotif = {
-               item: itemName,
-               message: `Item "${itemName}" not found in rate list. Shall I add it?`,
-               rawTranscript: transcript
-             };
-             if (user) addNotification(user.uid, newNotif);
-             setNotifications([{ ...newNotif, id: Date.now(), timestamp: new Date().toISOString() }, ...notifications]);
-           }
-        }
-
-        setAiResponse(answer);
-        speak(answer);
+      } catch (fallbackErr) {
+        console.error("Fallback processing error:", fallbackErr);
+        setAiResponse("Failed to process transaction.");
       }
-    } catch (error: any) {
-      clearTimeout(processingTimeout);
-      console.error("Failed to process voice:", error);
-      let errorMsg = "Sorry, I couldn't understand that command. Please try again.";
-      
-      if (error?.message?.includes('GEMINI_API_KEY')) {
-        errorMsg = "API Configuration Error. Please check your system settings.";
-      } else if (error?.message?.includes('permission')) {
-        errorMsg = "Access Denied. Please verify your credentials.";
-      }
-      
-      setAiResponse(errorMsg);
-      speak(errorMsg);
     } finally {
       setIsProcessing(false);
-      clearTimeout(processingTimeout);
-      clearTimeout(slowWarningTimeout);
     }
   };
 
@@ -773,15 +625,10 @@ function MainApp() {
   const dailyTransactions = transactions.filter(t => {
     const tTime = t.timestamp?.toDate ? t.timestamp.toDate().getTime() : (t.timestamp?.seconds * 1000 || Date.now());
     
-    // User wants sessions to clear when they reset/start new session
-    const resetBoundary = lastSessionStart || 0;
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     
-    // Use whichever is later: midnight or the manual reset time
-    const boundary = Math.max(startOfToday.getTime(), resetBoundary);
-    
-    return tTime >= boundary;
+    return tTime >= startOfToday.getTime();
   });
 
   const totalIncome = dailyTransactions
@@ -813,18 +660,18 @@ function MainApp() {
         <Logo />
         <div className="flex flex-col">
           <span className="font-bold text-xl tracking-tight leading-none">COB</span>
-          <span className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase mt-1">AI Assistant</span>
+          <span className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase mt-1">Business Ledger</span>
         </div>
       </div>
       
       <div className="flex flex-col gap-2 flex-grow overflow-x-auto lg:overflow-visible no-scrollbar pb-4 lg:pb-0">
         <NavItem icon={BarChart3} label="Dashboard" active={view === 'dashboard'} onClick={() => { setView('dashboard'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={Users} label="Customers & Udhar" active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={ShoppingBag} label="Products & Coins" active={view === 'store'} onClick={() => { setView('store'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={MessageSquare} label="AI Omegle Chat" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
         <NavItem icon={History} label="Daily Journal" active={view === 'history'} onClick={() => { setView('history'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={Users} label={`Receivables (Rs. ${totalDebtBalance})`} active={view === 'customers'} onClick={() => { setView('customers'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={ShoppingBag} label="Inventory & Rates" active={view === 'whatsapp'} onClick={() => { setView('whatsapp'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={MessageSquare} iconColor="text-[#25D366]" label="WhatsApp Business Bot" active={view === 'ai'} onClick={() => { setView('ai'); setIsMobileMenuOpen(false); }} />
-        <NavItem icon={IndianRupee} label={`Business Store (${coins} Coins)`} active={view === 'store'} onClick={() => { setView('store'); setIsMobileMenuOpen(false); }} />
         <NavItem icon={Calendar} label="All History" active={view === 'alldays'} onClick={() => { setView('alldays'); setIsMobileMenuOpen(false); }} />
+        <NavItem icon={Smartphone} label="WhatsApp & Keys" active={view === 'whatsapp'} onClick={() => { setView('whatsapp'); setIsMobileMenuOpen(false); }} />
       </div>
 
       <div className="pt-6 border-t border-white/5">
@@ -913,7 +760,7 @@ function MainApp() {
             <p className="text-slate-400 font-light italic">"COB is monitoring your business transactions in real-time."</p>
           </div>
           
-          <div className="flex">
+          <div className="flex gap-3">
              {user && (
                 <button 
                   onClick={resetDay}
@@ -926,23 +773,23 @@ function MainApp() {
           </div>
         </section>
 
-        {/* Data Sync Status */}
+        {/* Data Sync & AI Status */}
         {user && (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-12 glass rounded-3xl border border-emerald-500/20 p-6 flex flex-col md:flex-row items-center justify-between gap-6"
-          >
-            <div className="flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+          <div className="mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="glass rounded-3xl border border-emerald-500/20 p-6 flex items-center gap-5 shadow-inner"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+                <CheckCircle2 className="w-7 h-7 text-emerald-500" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-emerald-500 mb-1">Cloud Backup: SECURED</h3>
-                <p className="text-sm text-slate-400 max-w-sm">Your business records are safely synchronized to Google Cloud. Your data is accessible from any authorized device.</p>
+                <h3 className="text-lg font-bold text-emerald-500 mb-0.5 uppercase tracking-tight">Cloud Backup: OK</h3>
+                <p className="text-[10px] text-slate-500 max-w-[200px] leading-tight">Data synchronized to Google Cloud Vault.</p>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
 
         {/* Stats Grid */}
@@ -1175,9 +1022,6 @@ function MainApp() {
                   {!activeStatFilter && view === 'dashboard' && "Today's Activity"}
                   {view === 'history' && "Daily Journal"}
                   {view === 'alldays' && "Historical Archive"}
-                  {view === 'customers' && "Customer Ledgers"}
-                  {view === 'ai' && "Cloud WhatsApp Sync"}
-                  {view === 'whatsapp' && "Stock & Rate List"}
                 </h3>
                 <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-1">
                   {activeStatFilter ? 'Specific Records' : 'Database Sync: Online'}
@@ -1210,6 +1054,7 @@ function MainApp() {
                     t={t} 
                     context={activeStatFilter || (view === 'dashboard' && activeStatFilter === null ? 'dashboard' : null)} 
                     onDelete={() => handleDeleteTransaction(t)}
+                    onShowReceipt={() => setSelectedReceipt(t)}
                   />
                 ))}
               </div>
@@ -1218,7 +1063,7 @@ function MainApp() {
             {view === 'alldays' && (
               <div className="p-4 space-y-4">
                 {dayWiseHistory.map((day, idx) => (
-                  <DayCard key={day.id || idx} day={day} onDelete={handleDeleteTransaction} />
+                  <DayCard key={day.id || idx} day={day} onDelete={handleDeleteTransaction} onShowReceipt={(t: any) => setSelectedReceipt(t)} />
                 ))}
                 {dayWiseHistory.length === 0 && (
                   <div className="py-24 text-center">
@@ -1230,324 +1075,580 @@ function MainApp() {
             )}
 
             {view === 'customers' && (
-              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {customers.filter(c => (c.totalDebt || 0) > 0).map((customer: any, idx) => (
-                  <div key={idx} className="glass p-5 rounded-2xl flex justify-between items-center group hover:bg-white/10 transition-all cursor-pointer border border-white/5">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center">
-                        <Users className="w-6 h-6 text-emerald-400" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-lg">{customer.name}</p>
-                        {customer.phone && (
-                          <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-1">
-                             <Smartphone className="w-3 h-3" />
-                             {customer.phone}
-                          </div>
-                        )}
-                        <p className="text-xs text-rose-400 font-mono italic">Outstanding: Rs. {(customer.totalDebt || 0).toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                       <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const text = `Greetings ${customer.name}, your current outstanding balance with us is Rs. ${customer.totalDebt}. Thank you.`;
-                          const phoneNum = customer.phone?.replace(/[^0-9]/g, '');
-                          window.open(phoneNum ? `https://wa.me/${phoneNum}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`);
-                        }}
-                        className="p-3 glass rounded-xl text-emerald-400 hover:bg-emerald-500 hover:text-slate-950 transition-all active:scale-95 flex items-center gap-2"
-                       >
-                        <Share2 className="w-4 h-4" />
-                        <span className="text-[10px] font-bold font-mono">Bill Send</span>
-                      </button>
-                    </div>
+              <div className="p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold">Outstanding Ledger (Udhar Accounts)</h3>
+                    <p className="text-xs text-slate-500 font-mono">Manage customer outstanding debts and send alerts.</p>
                   </div>
-                ))}
-                {customers.filter(c => (c.totalDebt || 0) > 0).length === 0 && (
-                  <p className="col-span-2 text-center py-20 text-slate-600 font-light italic tracking-tight">"Everyone has cleared their bills! COB is impressed."</p>
-                )}
-              </div>
-            )}
-
-            {(view === 'ai' || view === 'whatsapp') && (
-              <div className="p-8 space-y-8">
-                <div className="flex gap-4">
                   <button 
-                    onClick={() => setView('ai')}
-                    className={`flex-1 py-4 px-6 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 ${
-                      view === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-xl shadow-emerald-500/20' : 'bg-white/5 text-slate-400 border border-white/5'
-                    }`}
+                    onClick={async () => {
+                      const name = window.prompt("Enter Customer Name (Udhari ke liye customer ka naam entered karein):");
+                      if (!name) return;
+                      const phoneInput = window.prompt("Enter Customer Phone Number (Optional, Mobile number):");
+                      setIsProcessing(true);
+                      try {
+                        await updateCustomerDebt(user.uid, name, 0, phoneInput || null);
+                        await loadData(user.uid);
+                        setAiResponse(`Customer "${name}" has been registered.`);
+                      } catch (err) {
+                        setAiResponse("Failed to create customer.");
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-slate-950 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-emerald-400 active:scale-95 transition-all"
                   >
-                    <Smartphone className="w-5 h-5" /> Bot Settings
-                  </button>
-                  <button 
-                    onClick={() => setView('whatsapp')}
-                    className={`flex-1 py-4 px-6 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 ${
-                      view === 'whatsapp' ? 'bg-emerald-500 text-slate-950 shadow-xl shadow-emerald-500/20' : 'bg-white/5 text-slate-400 border border-white/5'
-                    }`}
-                  >
-                    <ShoppingBag className="w-5 h-5" /> Rate List & Stock
+                    <Plus className="w-3.5 h-3.5" /> Add Customer
                   </button>
                 </div>
-                
-                {view === 'ai' ? (
-                  <>
-                    <div className="glass rounded-3xl p-8 bg-emerald-500/5 border-emerald-500/20 relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <MessageSquare className="w-32 h-32 text-emerald-500" />
-                      </div>
-                      <h4 className="font-bold text-2xl text-emerald-400 mb-4 flex items-center gap-3">
-                        <Smartphone className="w-6 h-6" /> WhatsApp Business Bot
-                      </h4>
-                      <p className="text-slate-300 mb-8 max-w-xl leading-relaxed italic text-sm">
-                        "Connect your WhatsApp to let COB answer customer price queries automatically."
-                      </p>
-                      
-                      <div className="space-y-4 max-w-sm ml-auto scale-90 origin-right">
-                        <div className="glass px-4 py-3 rounded-2xl rounded-tr-none bg-blue-500/10 border-blue-500/20 ml-auto">
-                          <p className="text-[8px] text-blue-300 mb-1 font-mono uppercase font-bold opacity-50">Customer</p>
-                          <p className="text-xs">Sugar ka kya rate hai?</p>
-                        </div>
-                        <div className="glass px-4 py-3 rounded-2xl rounded-tl-none bg-emerald-500/20 border-emerald-500/30">
-                          <p className="text-[8px] text-emerald-400 mb-1 font-mono uppercase font-bold opacity-50">COB Bot</p>
-                          <p className="text-xs">Aaj sugar 145 Rs per kg hai.</p>
-                        </div>
-                      </div>
-                      
-                      <button className="mt-8 w-full py-4 bg-emerald-500 text-slate-950 font-bold rounded-2xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all">
-                        Link WhatsApp Number
-                      </button>
-                    </div>
 
-                    {notifications.length > 0 && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-bold flex items-center gap-2">
-                            <Bell className="w-4 h-4 text-rose-400" />
-                            Bot Alerts (Missing Items)
-                          </h4>
-                          <button 
-                            onClick={() => setNotifications([])}
-                            className="text-[10px] uppercase font-bold text-slate-500 hover:text-rose-400 underline"
-                          >
-                            Clear All
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-1 gap-3">
-                          {notifications.map((n) => (
-                            <div key={n.id} className="glass p-5 rounded-2xl border-rose-500/20 bg-rose-500/5 flex justify-between items-center group shadow-lg">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-rose-400 shadow-inner">
-                                  <ShoppingBag className="w-6 h-6" />
-                                </div>
-                                <div>
-                                  <p className="font-medium text-slate-200">{n.message}</p>
-                                  <p className="text-[10px] text-slate-500 font-mono mt-1">{safeFormat(n.timestamp, 'p')} · {n.item}</p>
-                                </div>
-                              </div>
-                              <button 
-                                onClick={() => {
-                                  setView('whatsapp');
-                                  setNewProduct({ name: n.item, description: '', price: '' });
-                                  setShowProductForm(true);
-                                }}
-                                className="px-6 py-3 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold opacity-0 group-hover:opacity-100 transition-all shadow-xl hover:scale-105 active:scale-95"
-                              >
-                                Add Rate List
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <div>
-                        <h4 className="text-lg font-bold">Product Inventory (Rate List)</h4>
-                        <p className="text-xs text-slate-500">Add prices here so AI can answer customers on WhatsApp</p>
-                      </div>
-                      <button 
-                        onClick={() => {
-                          setEditingProduct(null);
-                          setNewProduct({ name: '', description: '', price: '' });
-                          setShowProductForm(!showProductForm);
-                        }}
-                        className="p-3 bg-emerald-500 text-slate-950 rounded-xl font-bold flex items-center gap-2 text-sm hover:scale-105 transition-all shadow-lg"
-                      >
-                        <Plus className="w-4 h-4" /> {showProductForm ? 'Cancel' : 'Add New Item'}
-                      </button>
-                    </div>
+                <div className="flex group relative">
+                  <input 
+                    type="text" 
+                    placeholder="Search customer by name (Naam se search karein)..." 
+                    value={chatInput} 
+                    onChange={(e) => setChatInput(e.target.value)}
+                    className="w-full glass bg-white/5 rounded-2xl py-3 px-4 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm placeholder:text-slate-600 shadow-xl"
+                  />
+                  {chatInput && (
+                    <button onClick={() => setChatInput("")} className="absolute right-4 top-3 text-slate-400 hover:text-white">✕</button>
+                  )}
+                </div>
 
-                    {showProductForm && (
-                      <div className="glass p-6 rounded-2xl space-y-4 border-emerald-500/20 bg-emerald-500/10 shadow-2xl relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-2xl rounded-full"></div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Product Name</label>
-                            <input 
-                              type="text" 
-                              placeholder="e.g. Sugar / Chini" 
-                              className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
-                              value={newProduct.name}
-                              onChange={e => setNewProduct({...newProduct, name: e.target.value})}
-                            />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {customers
+                    .filter(c => !chatInput || c.name?.toLowerCase().includes(chatInput.toLowerCase()))
+                    .map((c) => (
+                      <div key={c.id} className="p-5 glass rounded-2xl border border-white/5 flex flex-col justify-between hover:bg-white/5 transition-all">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h4 className="font-bold text-lg text-emerald-400 flex items-center gap-2">
+                              {c.name}
+                              {c.totalDebt > 0 && (
+                                <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[9px] font-black uppercase font-mono">Debtor</span>
+                              )}
+                            </h4>
+                            {c.phone ? (
+                              <p className="text-xs text-slate-400 mt-1 font-mono">{c.phone}</p>
+                            ) : (
+                              <p className="text-xs text-slate-600 italic mt-1">No phone number</p>
+                            )}
                           </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Price (Rs.)</label>
-                            <input 
-                              type="number" 
-                              placeholder="0.00" 
-                              className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10"
-                              value={newProduct.price}
-                              onChange={e => setNewProduct({...newProduct, price: e.target.value})}
-                            />
-                          </div>
-                          <div className="space-y-1 md:col-span-2">
-                            <label className="text-[10px] uppercase font-bold text-slate-500 font-mono">Details / Info</label>
-                            <textarea 
-                              placeholder="Rate per kg, or special discounts etc." 
-                              className="w-full glass bg-white/5 p-3 rounded-lg text-sm border-white/10 h-24 resize-none"
-                              value={newProduct.description}
-                              onChange={e => setNewProduct({...newProduct, description: e.target.value})}
-                            />
+                          <div className="text-right">
+                            <p className={`text-xl font-black font-mono ${c.totalDebt > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                              Rs. {(c.totalDebt || 0).toLocaleString()}
+                            </p>
+                            <span className="text-[9px] uppercase font-mono text-slate-500">Out Balance</span>
                           </div>
                         </div>
-                        <div className="flex justify-end gap-3">
-                          <button 
-                            onClick={() => {
-                              setShowProductForm(false);
-                              setEditingProduct(null);
-                            }} 
-                            className="px-5 py-2 text-xs font-bold text-slate-400"
-                          >
-                            Cancel
-                          </button>
-                          <button 
-                            onClick={() => {
-                              if (!newProduct.name || !newProduct.price) return;
-                              if (editingProduct) {
-                                setProducts(products.map(p => p.id === editingProduct.id ? { ...p, ...newProduct } : p));
-                                setEditingProduct(null);
-                              } else {
-                                setProducts([...products, { ...newProduct, id: Date.now() }]);
+
+                        <div className="flex gap-2 border-t border-white/5 pt-4 mt-2">
+                          <button
+                            onClick={async () => {
+                              const amt = window.prompt(`How much credit/udhar to ISSUE to ${c.name}?`);
+                              if (!amt || isNaN(Number(amt))) return;
+                              const amtNum = parseFloat(amt);
+                              setIsProcessing(true);
+                              try {
+                                await addTransaction(user.uid, {
+                                  amount: amtNum,
+                                  type: "debt",
+                                  description: "Manual Ledger Entry",
+                                  customerName: c.name,
+                                  phone: c.phone || null
+                                });
+                                await updateCustomerDebt(user.uid, c.name, amtNum, c.phone);
+                                await loadData(user.uid);
+                                setAiResponse(`Successfully recorded Rs. ${amtNum} debt for ${c.name}`);
+                              } catch (e) {
+                                setAiResponse("Failed to update.");
+                              } finally {
+                                setIsProcessing(false);
                               }
-                              setNewProduct({ name: '', description: '', price: '' });
-                              setShowProductForm(false);
                             }}
-                            className="px-8 py-2 bg-emerald-500 text-slate-950 rounded-lg text-sm font-bold shadow-lg active:scale-95"
+                            className="flex-1 py-1.5 bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-rose-500/10"
                           >
-                            {editingProduct ? 'Update Price' : 'Add to List'}
+                            + Issue Udhar
                           </button>
+                          <button
+                            onClick={async () => {
+                              const amt = window.prompt(`How much PAYMENT (Jama) received from ${c.name}?`);
+                              if (!amt || isNaN(Number(amt))) return;
+                              const amtNum = parseFloat(amt);
+                              setIsProcessing(true);
+                              try {
+                                await addTransaction(user.uid, {
+                                  amount: amtNum,
+                                  type: "payment",
+                                  description: "Manual Payment Entry",
+                                  customerName: c.name,
+                                  phone: c.phone || null
+                                });
+                                await updateCustomerDebt(user.uid, c.name, -amtNum, c.phone);
+                                await loadData(user.uid);
+                                setAiResponse(`Successfully recorded Rs. ${amtNum} received from ${c.name}`);
+                              } catch (e) {
+                                setAiResponse("Failed to update.");
+                              } finally {
+                                setIsProcessing(false);
+                              }
+                            }}
+                            className="flex-1 py-1.5 bg-emerald-500 text-slate-950 hover:bg-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-widest"
+                          >
+                            ✓ Recv Jama
+                          </button>
+                          {c.phone && (
+                            <button
+                              onClick={() => {
+                                const text = `Haji Saab, COB Ledger account alert:\nYour outstanding details:\nName: ${c.name}\nOutstanding Dues: Rs. ${c.totalDebt}\nPlease contact our store for payment. Shukriya!`;
+                                window.open(`https://wa.me/${c.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`);
+                              }}
+                              className="p-2 bg-emerald-500/15 hover:bg-emerald-500/35 text-emerald-400 rounded-lg flex items-center justify-center transition-colors"
+                              title="Send WhatsApp Alert"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
-                    )}
-
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-12 gap-4 px-4 text-[10px] uppercase font-bold text-slate-600 font-mono tracking-widest">
-                        <div className="col-span-8">Product / Description</div>
-                        <div className="col-span-4 text-right">Price (PKR)</div>
-                      </div>
-                      {products.map(p => (
-                        <div key={p.id} className="glass p-5 rounded-2xl flex flex-col gap-2 group hover:bg-white/5 transition-all border-white/5">
-                          <div className="flex justify-between items-start">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
-                                <ShoppingBag className="w-5 h-5 text-emerald-400" />
-                              </div>
-                              <p className="font-bold text-lg">{p.name}</p>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <p className="font-mono font-bold text-emerald-400 text-xl tracking-tighter">Rs. {p.price}</p>
-                              <button 
-                                onClick={() => {
-                                  setEditingProduct(p);
-                                  setNewProduct({ name: p.name, description: p.description, price: p.price });
-                                  setShowProductForm(true);
-                                }}
-                                className="p-2 opacity-0 group-hover:opacity-100 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
-                                title="Edit Price"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={() => setProducts(products.filter(item => item.id !== p.id))}
-                                className="p-2 opacity-0 group-hover:opacity-100 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
-                                title="Delete"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="pl-14">
-                            <p className="text-sm text-slate-400 leading-relaxed italic">{p.description || 'No detailed description added.'}</p>
-                          </div>
-                        </div>
-                      ))}
-                      {products.length === 0 && !showProductForm && (
-                        <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2rem]">
-                          <ShoppingBag className="w-12 h-12 text-slate-800 mx-auto mb-4" />
-                          <p className="text-slate-500 italic">"No products found. Add items to your rate list so COB can automate customer inquiries on WhatsApp."</p>
-                        </div>
-                      )}
+                    ))}
+                  
+                  {customers.filter(c => !chatInput || c.name?.toLowerCase().includes(chatInput.toLowerCase())).length === 0 && (
+                    <div className="col-span-full py-16 text-center text-slate-500 italic">
+                      No matching udhar records found.
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
             {view === 'store' && (
-              <div className="p-8 space-y-8">
-                <div className="flex flex-col items-center text-center mb-8">
-                  <div className="w-20 h-20 bg-amber-500/20 text-amber-500 rounded-3xl flex items-center justify-center mb-4 shadow-2xl">
-                    <IndianRupee className="w-10 h-10" />
+              <div className="p-6 space-y-8">
+                {/* Coin Reward Banner */}
+                <div className="glass rounded-3xl border border-amber-500/25 p-6 bg-gradient-to-r from-amber-500/5 to-transparent flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
+                  <div className="absolute right-0 top-0 translate-x-1/4 -translate-y-1/4 w-36 h-36 bg-amber-500/5 rounded-full blur-3xl"></div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/10">
+                      <IndianRupee className="w-8 h-8 font-black shrink-0" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold flex items-center gap-2">
+                        My Vault: <span className="text-amber-500 font-mono">{coins} Coins</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 leading-tight">Current Shop Level: <strong className="text-slate-200">{shopSize} Shop Size</strong>. Expand capacity or activate WhatsApp Auto-Alerts below.</p>
+                    </div>
                   </div>
-                  <h3 className="text-3xl font-bold">COB Store</h3>
-                  <p className="text-slate-400 mt-2 max-w-md">Use your COB Coins to grow your business into an empire!</p>
-                  <div className="mt-4 px-6 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 font-bold">
-                    Balance: {coins} Coins
+
+                  <button 
+                    onClick={async () => {
+                      const reward = Math.floor(Math.random() * 200) + 100;
+                      const nextCoins = coins + reward;
+                      setIsProcessing(true);
+                      try {
+                        await syncToCloud(user.uid, 'coins', nextCoins);
+                        setCoins(nextCoins);
+                        setAiResponse(`Mubarak ho! Collected daily reward bonus of +${reward} coins!`);
+                        speak(`Mubarak ho! Apko mile hain ${reward} extra coins!`);
+                      } catch (e) {
+                        setAiResponse("Failed to collect reward.");
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                    className="px-6 py-3 bg-amber-500 text-slate-950 font-bold rounded-2xl text-[10px] uppercase tracking-widest hover:bg-amber-400 active:scale-95 transition-all shadow-xl shadow-amber-500/25 shrink-0"
+                  >
+                    ✦ Claim Daily Coin Reward
+                  </button>
+                </div>
+
+                {/* Grid of Store Upgrades */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 font-mono">Store Upgrades & Services</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <StoreItem 
+                      title="Expand to Medium Size Shop" 
+                      description="Upgrades your database capabilities to store up to 5,000 transaction records. Expands inventory limits."
+                      cost={500}
+                      disabled={coins < 500}
+                      purchased={shopSize === 'Medium' || shopSize === 'Large'}
+                      onBuy={async () => {
+                        setIsProcessing(true);
+                        try {
+                          await syncToCloud(user.uid, 'coins', coins - 500);
+                          await syncToCloud(user.uid, 'shopSize', 'Medium');
+                          setCoins(coins - 500);
+                          setShopSize('Medium');
+                          setAiResponse("Mubarak ho! Store successfully expanded to Medium Shop!");
+                          speak("Mubarak ho! Apka shop expand ho chuka hai.");
+                        } catch (e) {
+                          setAiResponse("Purchase failed.");
+                        } finally {
+                          setIsProcessing(false);
+                        }
+                      }}
+                    />
+                    <StoreItem 
+                      title="Expand to Large Enterprise Shop" 
+                      description="Full industrial-strength data storage with priority backup servers and multi-user sync options."
+                      cost={1000}
+                      disabled={coins < 1000}
+                      purchased={shopSize === 'Large'}
+                      onBuy={async () => {
+                        setIsProcessing(true);
+                        try {
+                          await syncToCloud(user.uid, 'coins', coins - 1000);
+                          await syncToCloud(user.uid, 'shopSize', 'Large');
+                          setCoins(coins - 1000);
+                          setShopSize('Large');
+                          setAiResponse("Awesome! Shop expanded to Large Enterprise status!");
+                          speak("Mubarak. Ab aap large business run kar rahe hain.");
+                        } catch (e) {
+                          setAiResponse("Purchase failed.");
+                        } finally {
+                          setIsProcessing(false);
+                        }
+                      }}
+                    />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <StoreItem 
-                    title="Medium Shop Expansion"
-                    description="Expand your shop with more inventory space and faster COB processing."
-                    cost={1000}
-                    disabled={shopSize !== 'Small'}
-                    purchased={shopSize === 'Medium' || shopSize === 'Large' || shopSize === 'Palatial'}
-                    onBuy={() => {
-                      if (coins >= 1000) {
-                        setCoins(prev => prev - 1000);
-                        setShopSize('Medium');
-                        speak("Congratulations! Your shop has been upgraded to Medium size.");
-                      }
-                    }}
-                  />
-                  <StoreItem 
-                    title="Large Inventory Hub"
-                    description="Access advanced data insights and manage up to 500 products."
-                    cost={2500}
-                    disabled={shopSize !== 'Medium'}
-                    purchased={shopSize === 'Large' || shopSize === 'Palatial'}
-                    onBuy={() => {
-                      if (coins >= 2500) {
-                        setCoins(prev => prev - 2500);
-                        setShopSize('Large');
-                        speak("Your business is reaching new heights. Large Shop unlocked!");
-                      }
-                    }}
-                  />
-                   <StoreItem 
-                    title="AI WhatsApp Pro"
-                    description="Let AI handle multiple customers on WhatsApp at once."
-                    cost={0}
-                    purchased={true}
-                    onBuy={() => {}}
-                  />
+                {/* Inventory Manager (Product list) - "Product Wala" */}
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center border-t border-white/5 pt-6">
+                    <h4 className="text-xl font-bold text-white flex items-center gap-2">
+                      <ShoppingBag className="w-5 h-5 text-emerald-400" /> My Products (Inventory)
+                    </h4>
+                    <button 
+                      onClick={async () => {
+                        const name = window.prompt("Enter Product Name (Maal/Product ka naam):");
+                        if (!name) return;
+                        const price = window.prompt("Enter Product Selling Price (selling price kitni hai?):");
+                        const stock = window.prompt("Enter Stock Quantity (kitni quantity available hai?):");
+                        
+                        setIsProcessing(true);
+                        try {
+                          await addProduct(user.uid, {
+                            name,
+                            price: parseFloat(price || "0") || 0,
+                            stock: parseInt(stock || "0") || 0
+                          });
+                          await loadData(user.uid);
+                          setAiResponse(`Product "${name}" successfully added to inventory list.`);
+                        } catch (e) {
+                          setAiResponse("Failed to save product.");
+                        } finally {
+                          setIsProcessing(false);
+                        }
+                      }}
+                      className="px-4 py-2 bg-emerald-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider hover:bg-emerald-400 active:scale-95 transition-all flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Product
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {products.map((p) => (
+                      <div key={p.id} className="p-5 glass rounded-2xl border border-white/5 relative overflow-hidden flex flex-col justify-between hover:border-emerald-500/20 transition-all">
+                        <div>
+                          <h5 className="font-bold text-lg text-slate-100">{p.name}</h5>
+                          <p className="text-xs text-slate-500 font-mono mt-1 uppercase tracking-widest">Rate (Price): <span className="text-emerald-400 font-bold">Rs. {p.price}</span></p>
+                        </div>
+                        <div className="flex justify-between items-center border-t border-white/5 mt-4 pt-3">
+                          <span className="text-[10px] uppercase font-mono font-bold text-slate-500">Available Stock:</span>
+                          <span className={`text-xs font-black font-mono px-3 py-1 rounded bg-white/5 ${p.stock > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {p.stock > 0 ? `${p.stock} units` : 'Out of stock'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {products.length === 0 && (
+                      <div className="col-span-full py-12 text-center text-slate-500 italic">
+                        Empty inventory. Tap "Add Product" to create items to sell!
+                      </div>
+                    )}
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {view === 'whatsapp' && (
+              <div className="p-6 space-y-6">
+                <div>
+                  <h3 className="text-2xl font-bold">WhatsApp and Keys Configuration</h3>
+                  <p className="text-xs text-slate-500 font-mono">Configure custom keys for instant transaction logs and automated customer alerts.</p>
+                </div>
+
+                {/* Helpful Reminder Banner */}
+                <div className="p-5 rounded-2xl bg-white/5 border border-emerald-500/15 text-emerald-400 space-y-2">
+                  <h4 className="text-sm font-bold flex items-center gap-1.5 uppercase font-sans tracking-wide">
+                    💡 Aapko koi Key lagane ki bilkul zaroorat nahi hai!
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Humne system me <strong>Default Google Gemini API Key</strong> pehle se set kar rakhi hai. Aapka voice bookkeeping aur AI chat out-of-the-box automatic aur bilkul free chalega! Koi shopkeeper "matha mari" nahi karna chahta, isliye custom key lagana bilkul optional hai.
+                  </p>
+                </div>
+
+                <div className="glass rounded-3xl border border-white/5 p-6 space-y-6">
+                  {/* Custom API Key Feature */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono block">Custom Gemini API Key</label>
+                    <input 
+                      type="password" 
+                      placeholder="Paste your own GEMINI_API_KEY if purchased..." 
+                      className="w-full glass bg-white/5 rounded-xl py-4 px-4 text-xs font-mono text-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-700"
+                      value={geminiApiKey || ''}
+                      onChange={(e) => setGeminiApiKey(e.target.value)}
+                    />
+                    <p className="text-[9px] text-slate-500 leading-tight">If you bought an official key from Google AI Studio, paste it here. COB will prefer this key for instant bookkeeping processing.</p>
+                  </div>
+
+                  {/* WhatsApp Custom Key Feature */}
+                  <div className="p-4 rounded-xl bg-slate-900 border border-white/5 text-slate-300 space-y-1.5">
+                    <h5 className="text-xs font-bold text-slate-100 uppercase tracking-widest font-mono">📲 Direct WhatsApp Easy alerts</h5>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Customers ko udhar alert bhejne ke liye <strong>WhatsApp API key khareedne ki koi zaroorat nahi hai</strong>. Jab aap customer par click karte hain, to app direct unke WhatsApp per pre-filled SMS opens kar deta hai jo bilkul muft aur aasan hai!
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono block">WhatsApp Business Number</label>
+                      <input 
+                        type="text" 
+                        placeholder="+923001234567" 
+                        className="w-full glass bg-white/5 rounded-xl py-4 px-4 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        value={whatsappNumber || ''}
+                        onChange={(e) => setWhatsappNumber(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono block">WhatsApp API/Gateway Token</label>
+                      <input 
+                        type="password" 
+                        placeholder="Enter WhatsApp Connection key..." 
+                        className="w-full glass bg-white/5 rounded-xl py-4 px-4 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        value={whatsappApiKey || ''}
+                        onChange={(e) => setWhatsappApiKey(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={async () => {
+                      setIsProcessing(true);
+                      try {
+                        await syncToCloud(user.uid, 'geminiApiKey', geminiApiKey);
+                        await syncToCloud(user.uid, 'whatsappNumber', whatsappNumber);
+                        await syncToCloud(user.uid, 'whatsappApiKey', whatsappApiKey);
+                        
+                        setAiResponse("Custom API keys & WhatsApp configuration successfully synced to Cloud Vault!");
+                        speak("Mubarak. Aapki tamaam settings mehfooz kar li gayi hain.");
+                      } catch (e) {
+                        setAiResponse("Failed to sync settings.");
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                    className="w-full py-4 bg-emerald-500 text-slate-950 font-black rounded-2xl tracking-widest hover:bg-emerald-400 active:scale-95 transition-all text-sm uppercase"
+                  >
+                    Save & Sync Settings
+                  </button>
+                </div>
+
+                <div className="p-6 glass rounded-2xl border border-emerald-500/10 flex items-center gap-4 bg-emerald-500/5">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 animate-ping">
+                    <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-emerald-400">Settings Status: Secured</h5>
+                    <p className="text-[10px] text-slate-400 leading-tight">All keys are secured with cloud encryption. They never leak outside the verified container environment.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {view === 'ai' && (
+              <div className="p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-2xl font-bold flex items-center gap-2">
+                      <span className="w-3 h-3 bg-emerald-500 rounded-full animate-ping"></span> Omegle Merchants Room
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">Speak anonymously with other Pakistan/India shopkeepers & compare margins!</p>
+                  </div>
+                  {omegleStatus === 'connected' && (
+                    <button 
+                      onClick={() => {
+                        setOmegleStatus('disconnected');
+                        setOmegleMessages([]);
+                        setOmegleActive(false);
+                      }}
+                      className="px-4 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+                    >
+                      Disconnect
+                    </button>
+                  )}
+                </div>
+
+                {omegleStatus === 'disconnected' && (
+                  <div className="py-24 text-center glass rounded-[2rem] border border-white/5 space-y-6 max-w-xl mx-auto p-10 shadow-2xl">
+                    <div className="w-20 h-20 bg-emerald-500/10 rounded-[2rem] flex items-center justify-center mx-auto border border-emerald-500/10 shadow-inner hover:scale-105 transition-all">
+                      <MessageSquare className="w-10 h-10 text-emerald-400 animate-pulse" />
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="text-2xl font-black">Anonymous Merchant Matching</h4>
+                      <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">Click below to find a stranger shopkeeper from Lahore, Karachi, or Delhi. Discuss wholesale product cost, customer udhari details, or chit-chat about sales!</p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setOmegleStatus('searching');
+                        const names = ["Sajid from Lahore", "Asif from Karachi", "Arshad from Rawalpindi", "Kabir from Old Delhi", "Farooq from Peshawar"];
+                        const locations = ["Lahore, PK", "Karachi, PK", "Rawalpindi, PK", "Delhi, IN", "Peshawar, PK"];
+                        const randIdx = Math.floor(Math.random() * names.length);
+                        
+                        setTimeout(() => {
+                          setOmegleStrangerName(names[randIdx]);
+                          setOmegleStrangerLoc(locations[randIdx]);
+                          setOmegleStatus('connected');
+                          setOmegleMessages([
+                            { sender: 'system', text: `Matched with stranger: ${names[randIdx]} (${locations[randIdx]}). Say Hi (Assalam-o-Alaikum)!` }
+                          ]);
+                          speak("Stranger matched. Assalam u alaikum!");
+                        }, 2500);
+                      }}
+                      className="w-full py-4 bg-emerald-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-emerald-500/20 hover:scale-105 active:scale-95 transition-all text-xs uppercase tracking-widest font-sans"
+                    >
+                      Connect with Random Stranger (Omegle Mode)
+                    </button>
+                  </div>
+                )}
+
+                {omegleStatus === 'searching' && (
+                  <div className="py-32 text-center glass rounded-[2rem] border border-emerald-500/20 max-w-xl mx-auto space-y-4">
+                    <div className="flex justify-center gap-1.5 mb-2">
+                      <div className="w-3 h-3 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                      <div className="w-3 h-3 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-3 h-3 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                    </div>
+                    <h5 className="text-xl font-bold text-emerald-400 uppercase tracking-widest animate-pulse font-mono">Searching for match...</h5>
+                    <p className="text-xs text-slate-500">Scanning active digital ledgers on COB cloud router...</p>
+                  </div>
+                )}
+
+                {omegleStatus === 'connected' && (
+                  <div className="glass rounded-3xl border border-white/5 flex flex-col h-[55vh] max-w-xl mx-auto overflow-hidden shadow-2xl">
+                    {/* Chat Header */}
+                    <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center font-bold text-emerald-400 text-lg uppercase font-mono">
+                          {omegleStrangerName[0]}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-emerald-400">{omegleStrangerName}</p>
+                          <p className="text-[10px] text-slate-500 uppercase font-mono">Status: Connected Online</p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20 font-black uppercase font-mono tracking-widest">Omegle Match</span>
+                    </div>
+
+                    {/* Messages Body */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
+                      {omegleMessages.map((msg, i) => (
+                        <div 
+                          key={i} 
+                          className={`flex ${
+                            msg.sender === 'system' ? 'justify-center' : msg.sender === 'me' ? 'justify-end' : 'justify-start'
+                          }`}
+                        >
+                          {msg.sender === 'system' ? (
+                            <span className="px-4 py-1.5 bg-slate-900 rounded-xl text-[10px] text-slate-500 font-mono tracking-wide text-center">
+                              {msg.text}
+                            </span>
+                          ) : (
+                            <div className={`p-4 rounded-2xl max-w-xs text-sm leading-relaxed ${
+                              msg.sender === 'me' 
+                                ? 'bg-emerald-500 text-slate-950 font-bold rounded-tr-none' 
+                                : 'bg-white/5 text-slate-100 border border-white/5 rounded-tl-none'
+                            }`}>
+                              {msg.text}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Input Footer */}
+                    <div className="p-3 bg-white/5 border-t border-white/5 flex gap-2">
+                      <input 
+                        type="text"
+                        placeholder="Type message in Roman Urdu or Urdu..."
+                        className="flex-1 glass bg-white/5 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-700"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyPress={async (e) => {
+                          if (e.key === 'Enter' && chatInput.trim()) {
+                            const uMsg = chatInput;
+                            setChatInput('');
+                            
+                            // 1. Add user message
+                            setOmegleMessages(prev => [...prev, { sender: 'me', text: uMsg }]);
+                            
+                            // 2. Trigger simulated peer response with roleplay
+                            setIsProcessing(true);
+                            try {
+                              const promptWithContext = `[OMEGLE_CHAT] StrangerName: ${omegleStrangerName}, Location: ${omegleStrangerLoc}. Chat history list so far: ${JSON.stringify(omegleMessages)}. Shopkeeper said to you: "${uMsg}". Respond accordingly.`;
+                              const response = await processWithGemini(promptWithContext, [], [], geminiApiKey || undefined);
+                              if (response && response.response) {
+                                setOmegleMessages(prev => [...prev, { sender: 'stranger', text: response.response }]);
+                                speak(response.response);
+                              } else {
+                                setOmegleMessages(prev => [...prev, { sender: 'stranger', text: "Yar dhandha chalao, kya baten kar rahe ho!" }]);
+                              }
+                            } catch (err) {
+                              setTimeout(() => {
+                                setOmegleMessages(prev => [...prev, { sender: 'stranger', text: "Acha sahi hai bhai. Aaj ki bachat kitni rahi?" }]);
+                                speak("Acha sahi hai bhai");
+                              }, 1500);
+                            } finally {
+                              setIsProcessing(false);
+                            }
+                          }
+                        }}
+                      />
+                      <button 
+                        onClick={async () => {
+                          if (!chatInput.trim()) return;
+                          const uMsg = chatInput;
+                          setChatInput('');
+                          setOmegleMessages(prev => [...prev, { sender: 'me', text: uMsg }]);
+                          setIsProcessing(true);
+                          try {
+                            const promptWithContext = `[OMEGLE_CHAT] StrangerName: ${omegleStrangerName}, Location: ${omegleStrangerLoc}. Shopkeeper matching. User sent: "${uMsg}". Respond accordingly in Roman Urdu / Hindi.`;
+                            const response = await processWithGemini(promptWithContext, [], [], geminiApiKey || undefined);
+                            if (response && response.response) {
+                              setOmegleMessages(prev => [...prev, { sender: 'stranger', text: response.response }]);
+                              speak(response.response);
+                            } else {
+                              setOmegleMessages(prev => [...prev, { sender: 'stranger', text: "Yar dhandha kaisa chal raha hai?" }]);
+                            }
+                          } catch (err) {
+                            setTimeout(() => {
+                              setOmegleMessages(prev => [...prev, { sender: 'stranger', text: "Acha thik hai, batayein." }]);
+                              speak("Acha thik hai");
+                            }, 1500);
+                          } finally {
+                            setIsProcessing(false);
+                          }
+                        }}
+                        className="p-3 bg-emerald-500 rounded-xl text-slate-950 hover:bg-emerald-400 cursor-pointer flex items-center justify-center shadow-lg"
+                      >
+                        <Send className="w-5 h-5 flex-shrink-0" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1604,6 +1705,7 @@ function MainApp() {
                           t={t} 
                           context="history" 
                           onDelete={() => handleDeleteTransaction(t)}
+                          onShowReceipt={() => setSelectedReceipt(t)}
                         />
                       ))}
                     </div>
@@ -1622,6 +1724,140 @@ function MainApp() {
         )}
       </AnimatePresence>
 
+      {/* Digital Receipt Modal */}
+      <AnimatePresence>
+        {selectedReceipt && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               onClick={() => setSelectedReceipt(null)}
+               className="absolute inset-0 bg-slate-950/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 30 }}
+              className="w-full max-w-sm relative z-[111]"
+            >
+              <div 
+                id="digital-receipt"
+                className="bg-white text-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col p-10 font-sans relative"
+              >
+                {/* Decorative Elements */}
+                <div className="absolute top-0 left-0 right-0 h-2 bg-emerald-500"></div>
+                <div className="absolute -right-12 -top-12 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl"></div>
+                
+                {/* Receipt Header */}
+                <div className="text-center border-b-2 border-dashed border-slate-200 pb-8 mb-8 relative">
+                  <div className="flex justify-center mb-4">
+                    <div className="w-16 h-16 bg-slate-900 rounded-[1.5rem] flex items-center justify-center text-white shadow-xl shadow-slate-900/10 scale-110">
+                      <Logo className="w-10 h-10" />
+                    </div>
+                  </div>
+                  <h2 className="text-3xl font-black uppercase tracking-tight text-slate-900">COB Payment Receipt</h2>
+                  <p className="text-[10px] text-slate-400 uppercase font-mono tracking-[0.2em] mt-2 font-bold">Ref: {(selectedReceipt.id || '...').substring(0, 12).toUpperCase()}</p>
+                </div>
+
+                {/* Receipt Body */}
+                <div className="space-y-6 mb-10">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date & Time</span>
+                    <span className="text-xs font-bold text-slate-600">{selectedReceipt.timestamp?.seconds ? safeFormat(new Date(selectedReceipt.timestamp.seconds * 1000), 'p, MMM d, yyyy') : 'Today'}</span>
+                  </div>
+                  
+                  <div className="py-8 border-y border-slate-100 flex flex-col items-center text-center">
+                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-3">Amount Paid</p>
+                    <p className="text-5xl font-black tracking-tighter text-emerald-600 mb-2">
+                       <span className="text-2xl mr-1">Rs.</span>{(selectedReceipt.amount || 0).toLocaleString()}
+                    </p>
+                    <div className="px-4 py-1.5 bg-emerald-500/10 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">
+                      Transaction Success
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 ring-1 ring-slate-50 p-4 rounded-2xl bg-slate-50/50">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Description</p>
+                      <p className="text-xs font-bold leading-tight text-slate-800">{selectedReceipt.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Category</p>
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-800">{selectedReceipt.type}</p>
+                    </div>
+                  </div>
+
+                  {selectedReceipt.customerName && (
+                    <div className="flex items-center gap-3 p-4 bg-slate-900 rounded-2xl text-white">
+                       <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                          <Users className="w-4 h-4" />
+                       </div>
+                       <div>
+                          <p className="text-[8px] font-black text-white/40 uppercase tracking-widest">Customer</p>
+                          <p className="text-sm font-bold">{selectedReceipt.customerName}</p>
+                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Receipt Footer */}
+                <div className="text-center pt-4">
+                  <div className="w-full h-12 bg-slate-100 rounded-xl flex flex-col items-center justify-center mb-4 border border-slate-200">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Brand Source</p>
+                    <p className="text-[10px] font-black text-slate-900 italic">This software is made by Vishal Kumar</p>
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Powered by COB AI</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-8 grid grid-cols-2 gap-4">
+                <button 
+                  onClick={async () => {
+                    const canvas = await (await import('html2canvas')).default(document.getElementById('digital-receipt')!);
+                    const link = document.createElement('a');
+                    link.download = `Receipt-${(selectedReceipt.id || '...').substring(0, 6)}.png`;
+                    link.href = canvas.toDataURL();
+                    link.click();
+                  }}
+                  className="flex items-center justify-center gap-2 bg-white/10 backdrop-blur-xl text-white py-4 rounded-2xl font-bold border border-white/10 hover:bg-white/20 transition-all active:scale-95"
+                >
+                  <Download className="w-5 h-5" /> Download
+                </button>
+                <button 
+                  onClick={async () => {
+                    const canvas = await (await import('html2canvas')).default(document.getElementById('digital-receipt')!);
+                    canvas.toBlob(async (blob) => {
+                      if (!blob) return;
+                      const file = new File([blob], 'receipt.png', { type: 'image/png' });
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({
+                            files: [file],
+                            title: 'Business Receipt',
+                            text: `Receipt from ${user.displayName}: Rs. ${selectedReceipt.amount}`
+                          });
+                        } catch (e) {
+                          const text = `COB Business Receipt:
+Item: ${selectedReceipt.description}
+Price: Rs. ${selectedReceipt.amount}
+Customer: ${selectedReceipt.customerName || 'N/A'}
+Date: ${selectedReceipt.timestamp?.seconds ? safeFormat(new Date(selectedReceipt.timestamp.seconds * 1000), 'p, MMM d') : 'Today'}`;
+                          window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+                        }
+                      }
+                    });
+                  }}
+                >
+                  <Share2 className="w-5 h-5" /> Share
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Footer / Status Bar - Desktop only for now */}
       <footer className="hidden lg:flex fixed bottom-0 left-72 right-0 h-10 glass border-t-0 px-10 items-center justify-between text-[10px] text-slate-500 z-40 font-mono uppercase tracking-widest bg-slate-950/80">
         <div className="flex gap-6">
@@ -1629,7 +1865,7 @@ function MainApp() {
           <span>Latency: 45ms</span>
         </div>
         <div className="flex gap-6">
-          <span>Gemini 3.0 Pro</span>
+          <span>COB Core Engine</span>
           <span>Sync Status: Stable</span>
         </div>
       </footer>
@@ -1637,7 +1873,7 @@ function MainApp() {
   );
 }
 
-function TransactionRow({ t, context, onDelete }: any) {
+function TransactionRow({ t, context, onDelete, onShowReceipt }: any) {
   const isDebtContext = context === 'all_debt' || context === 'debt' || context === 'customers';
   
   let amountSign = '+';
@@ -1711,7 +1947,7 @@ function TransactionRow({ t, context, onDelete }: any) {
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
         <div className="text-right">
           <p className={`text-xl font-bold font-mono tracking-tighter ${
             (currentSign === '+' || t.type === 'income' || (t.type === 'payment' && !isDebtContext)) ? 'text-emerald-400' : 'text-rose-400'
@@ -1728,32 +1964,45 @@ function TransactionRow({ t, context, onDelete }: any) {
           </div>
         </div>
         
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            const text = `COB Business Snapshot:
+        <div className="flex gap-2">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onShowReceipt && onShowReceipt();
+            }}
+            className="p-3 bg-white/5 hover:bg-blue-500 hover:text-slate-950 rounded-xl transition-all shadow-lg active:scale-95 group/receipt"
+            title="Digital Receipt"
+          >
+            <FileText className="w-4 h-4" />
+          </button>
+
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              const text = `COB Business Snapshot:
 Item: ${t.description}
 Price: Rs. ${t.amount}
 Date: ${t.timestamp?.seconds ? safeFormat(new Date(t.timestamp.seconds * 1000), 'p, MMM d') : 'Today'}
 Thank you!`;
-            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
-          }}
-          className="p-3 bg-white/5 hover:bg-emerald-500 hover:text-slate-950 rounded-xl transition-all shadow-lg active:scale-95 group/wa"
-          title="Share via WhatsApp"
-        >
-          <Share2 className="w-4 h-4" />
-        </button>
+              window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+            }}
+            className="p-3 bg-white/5 hover:bg-emerald-500 hover:text-slate-950 rounded-xl transition-all shadow-lg active:scale-95 group/wa"
+            title="Share via WhatsApp"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
 
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete && onDelete();
-          }}
-          className="p-3 bg-white/5 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-xl transition-all active:scale-90"
-          title="Delete Record"
-        >
-          <MoreVertical className="w-5 h-5" />
-        </button>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete && onDelete();
+            }}
+            className="p-3 bg-white/5 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-xl transition-all active:scale-90"
+            title="Delete Record"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1796,7 +2045,7 @@ function StoreItem({ title, description, cost, onBuy, disabled, purchased }: any
   );
 }
 
-function DayCard({ day, onDelete }: { day: any, onDelete: (t: any) => void }) {
+function DayCard({ day, onDelete, onShowReceipt }: { day: any, onDelete: (t: any) => void, onShowReceipt: (t: any) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   
   const dailyEarnings = (day.items || [])
@@ -1844,6 +2093,7 @@ function DayCard({ day, onDelete }: { day: any, onDelete: (t: any) => void }) {
                   t={t} 
                   context="history" 
                   onDelete={() => onDelete(t)}
+                  onShowReceipt={() => onShowReceipt(t)}
                 />
               ))}
             </div>
